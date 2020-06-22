@@ -24,6 +24,7 @@ import tempfile
 import types
 from absl import flags
 from absl import logging
+from absl import app
 import attr
 import core as fg_core
 import file_util
@@ -31,6 +32,7 @@ from agents.recommenders import batched_movielens_rnn_agent
 from agents.recommenders import evaluation
 from environments.recommenders import movie_lens_dynamic
 import tensorflow.compat.v1 as tf
+import sys
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('ep_length', 10, 'Maximum Episode Length.')
@@ -315,6 +317,7 @@ def train(config):
       num_users=config.num_users_eval_final,
       deterministic=config.eval_deterministic)
   agent.set_batch_size(len(envs))
+  return metrics
 
 
 def _configure_environment_from_flags():
@@ -374,7 +377,11 @@ def _set_experiment_name(config):
     experiment_name += '_' + FLAGS.expt_name_suffix
   config['experiment_name'] = experiment_name
 
-
 def main(_):
   config = configure_expt_from_flags()
-  train(config)
+  print(config)
+  metrics = train(config)
+  print(metrics)
+
+if __name__ == "__main__":
+  app.run(main)

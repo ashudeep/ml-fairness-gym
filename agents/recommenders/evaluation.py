@@ -35,10 +35,15 @@ def violence_risk(observation):
 def health_risk(observation):
   return 1-observation['response'][0]['health_score']
 
+def plot_recs_hists(recs_histogram, pool, ax):
+  ax.plot(sorted(recs_histogram.values(), reverse=True), marker='.')
+  ax.set(ylabel='Number of times recommended in the pool.', xlabel ='Movie index (sorted by frequency of recommendation)')
+  ax.set_title('Recommendation frequency {}.'.format(pool))
+    
 
 def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                    scatter_plot_trajectories=False, figure_file_obj=None,
-                   risk_score_extractor=violence_risk):
+                   risk_score_extractor=violence_risk, plot_histogram=False):
   """Runs an agent-env simulation to evaluate average reward and safety costs.
 
   Args:
@@ -69,7 +74,10 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       env._environment.set_active_pool(pool)  # pylint: disable=protected-access
     else:
       assert pool == 'all'
-
+    if plot_histogram:
+      fig, axs = plt.subplots(2, 1)
+      recs_histogram = {}
+      recs_histogram_keys_list = {}
     rewards = []
     health = []
     ratings = []
@@ -82,13 +90,23 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       curr_user_reward = 0.0
       curr_user_health = 0.0
       curr_user_rating = 0.0
-
+      if plot_histogram:
+        current_trajectory = []
       reward = 0
       observation = env.reset()
       for _ in range(max_episode_length):
         slate = agent.step(reward, observation, eval_mode=True,
                            deterministic=deterministic)
+        if plot_histogram:
+          current_trajectory.append(slate[0])
         observation, reward, _, _ = env.step(slate)
+        if slate[0] in recs_histogram:
+          recs_histogram[slate[0]] = recs_histogram[slate[0]] + 1  
+        else:
+          recs_histogram[slate[0]] = 1
+          recs_histogram_keys_list[slate[0]] = len(recs_histogram.keys())
+
+
         curr_user_reward += reward
         curr_user_health += 1-risk_score_extractor(observation)
         if 'rating' in observation['response'][0]:
@@ -97,6 +115,9 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       rewards.append(curr_user_reward/float(max_episode_length))
       health.append(curr_user_health/float(max_episode_length))
       ratings.append(curr_user_rating/float(max_episode_length))
+      if plot_histogram:
+        axs[1].plot([recs_histogram_keys_list[key] for key in current_trajectory], 
+                    label=str(observation['user']['user_id']))
     agent.empty_buffer()
     health_risks = 1-np.array(health)
     var = np.percentile(health_risks, 100*alpha)
@@ -104,6 +125,10 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
     logging.info('Average Reward = %f, Average Health = %f, '
                  'Average Ratings = %f,VaR = %f, CVaR = %f',
                  np.mean(rewards), np.mean(health), np.mean(ratings), var, cvar)
+    if plot_histogram:
+      plot_recs_hists(recs_histogram, pool, axs[0])
+      plt.show()
+    num_unique_docs_recommended = len(recs_histogram.keys())
     # Set the learning phase back to 1.
     tf.keras.backend.set_learning_phase(1)
     if scatter_plot_trajectories:
@@ -113,7 +138,8 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
         'health': np.mean(health),
         'ratings': np.mean(ratings),
         'var': var,
-        'cvar': cvar
+        'cvar': cvar,
+        'unique': num_unique_docs_recommended
     }
 
   if len(results) == 1:  # No train/eval/test split, just return one value.

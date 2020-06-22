@@ -35,7 +35,7 @@ flags.DEFINE_string(
     'tag_genome_url',
     'http://files.grouplens.org/datasets/tag-genome/tag-genome.zip',
     'Url to download tag genome dataset.')
-flags.DEFINE_string('output_directory', None, 'location to write CSV files to.')
+flags.DEFINE_string('output_directory', './ml-data', 'location to write CSV files to.')
 
 FLAGS = flags.FLAGS
 
@@ -77,7 +77,7 @@ def read_movielens_data(url):
   logging.info('Downloaded zip file containing: %s', downloaded_zip.namelist())
   movies_df = pd.read_csv(
       downloaded_zip.open('ml-1m/movies.dat', 'r'),
-      sep=b'::',
+      sep='::',
       names=['movieId', 'title', 'genres'],
       encoding='iso-8859-1')
   movies_df['genres'] = movies_df['genres'].str.decode('utf-8', 'ignore')
@@ -85,13 +85,13 @@ def read_movielens_data(url):
 
   users_df = pd.read_csv(
       downloaded_zip.open('ml-1m/users.dat', 'r'),
-      sep=b'::',
+      sep='::',
       names=['userId', 'sex', 'age', 'occupation', 'zip_code'],
       encoding='iso-8859-1')
 
   ratings_df = pd.read_csv(
       downloaded_zip.open('ml-1m/ratings.dat', 'r'),
-      sep=b'::',
+      sep='::',
       names=['userId', 'movieId', 'rating', 'timestamp'],
       encoding='iso-8859-1')
   return movies_df, users_df, ratings_df
@@ -136,6 +136,7 @@ def merge_with_genome_data(url, target_tag, dataframes):
 def write_csv_output(dataframes, directory):
   """Write csv file outputs."""
   movies, users, ratings = dataframes
+  logging.info(directory)
   file_util.makedirs(directory)
 
   del movies['tag_id']  # This column isn't necessary.
