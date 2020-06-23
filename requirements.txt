@@ -1,7 +1,6 @@
 absl-py
 atari-py
 attrs
-dopamine-rl
 gin-config
 gym
 matplotlib
@@ -17,3 +16,5 @@ sklearn
 statsmodels
 tensorflow==1.15.2
 tqdm
+dopamine-rl==2.0.5
+gast==0.3.2
