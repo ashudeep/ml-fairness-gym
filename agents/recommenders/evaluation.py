@@ -43,7 +43,8 @@ def plot_recs_hists(recs_histogram, pool, ax):
 
 def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                    scatter_plot_trajectories=False, figure_file_obj=None,
-                   risk_score_extractor=violence_risk, plot_histogram=False):
+                   risk_score_extractor=violence_risk, plot_histogram=False, 
+                   stepwise_plot=False):
   """Runs an agent-env simulation to evaluate average reward and safety costs.
 
   Args:
@@ -82,10 +83,14 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
     health = []
     ratings = []
     max_episode_length = agent.max_episode_length
+    if stepwise_plot:
+      stepwise_rewards = [[] for _ in range(max_episode_length)]
+      stepwise_healths = [[] for _ in range(max_episode_length)]
+    
     agent.epsilon = 0.0  # Turn off any exploration.
     # Set the learning phase to 0 i.e. evaluation to not use dropout.
     # Generate num_users trajectories.
-    for _ in range(num_users):
+    for user_number in range(num_users):
       # TODO(): Clean the logged variables by making a data class.
       curr_user_reward = 0.0
       curr_user_health = 0.0
@@ -94,7 +99,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
         current_trajectory = []
       reward = 0
       observation = env.reset()
-      for _ in range(max_episode_length):
+      for step_number in range(max_episode_length):
         slate = agent.step(reward, observation, eval_mode=True,
                            deterministic=deterministic)
         if plot_histogram:
@@ -105,8 +110,10 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
         else:
           recs_histogram[slate[0]] = 1
           recs_histogram_keys_list[slate[0]] = len(recs_histogram.keys())
-
-
+        if stepwise_plot:
+          # print(reward, risk_score_extractor(observation))
+          stepwise_rewards[step_number].append(reward)
+          stepwise_healths[step_number].append(1-risk_score_extractor(observation))
         curr_user_reward += reward
         curr_user_health += 1-risk_score_extractor(observation)
         if 'rating' in observation['response'][0]:
@@ -127,6 +134,17 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                  np.mean(rewards), np.mean(health), np.mean(ratings), var, cvar)
     if plot_histogram:
       plot_recs_hists(recs_histogram, pool, axs[0])
+      plt.show()
+    if stepwise_plot:
+      stepwise_reward_means = [np.mean(rews) for rews in stepwise_rewards]
+      stepwise_health_means = [np.mean(rews) for rews in stepwise_healths]
+      fig, axs = plt.subplots(1, 2)
+      axs[0].plot(stepwise_reward_means, label='Reward Mean')
+      axs[1].plot(stepwise_health_means, label='Health Mean')
+      axs[0].set_xlabel('Steps')
+      axs[1].set_xlabel('Steps')
+      axs[0].legend()
+      axs[1].legend()
       plt.show()
     num_unique_docs_recommended = len(recs_histogram.keys())
     # Set the learning phase back to 1.
