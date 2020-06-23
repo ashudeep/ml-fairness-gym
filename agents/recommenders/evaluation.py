@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
+from collections import Counter
 
 
 def violence_risk(observation):
@@ -37,6 +38,7 @@ def health_risk(observation):
 
 def plot_recs_hists(recs_histogram, pool, ax):
   ax.plot(sorted(recs_histogram.values(), reverse=True), marker='.')
+  print("Most common 5 recommendations are:", recs_histogram.most_common(5))
   ax.set(ylabel='Number of times recommended in the pool.', xlabel ='Movie index (sorted by frequency of recommendation)')
   ax.set_title('Recommendation frequency {}.'.format(pool))
     
@@ -77,7 +79,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       assert pool == 'all'
     if plot_histogram:
       fig, axs = plt.subplots(2, 1)
-      recs_histogram = {}
+      recs_histogram = Counter({})
       recs_histogram_keys_list = {}
     rewards = []
     health = []

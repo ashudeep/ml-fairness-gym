@@ -377,11 +377,7 @@ def _set_experiment_name(config):
     experiment_name += '_' + FLAGS.expt_name_suffix
   config['experiment_name'] = experiment_name
 
+
 def main(_):
   config = configure_expt_from_flags()
-  print(config)
-  metrics = train(config)
-  print(metrics)
-
-if __name__ == "__main__":
-  app.run(main)
+  train(config)
