@@ -16,7 +16,8 @@
 # Lint as: python3
 """Experiment runner for movielens cvar experiments."""
 
-
+import sys
+sys.path.append('../')
 from absl import app
 from absl import flags
 from experiments import movielens_recs

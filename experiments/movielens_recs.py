@@ -15,7 +15,8 @@
 
 # Lint as: python3
 """Run a CVaR-constrained Safe RL learning experiments."""
-
+import sys
+sys.path.append("..")
 import copy
 import hashlib
 import inspect
@@ -32,15 +33,14 @@ from agents.recommenders import batched_movielens_rnn_agent
 from agents.recommenders import evaluation
 from environments.recommenders import movie_lens_dynamic
 import tensorflow.compat.v1 as tf
-import sys
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('ep_length', 10, 'Maximum Episode Length.')
+flags.DEFINE_integer('ep_length', 50, 'Maximum Episode Length.')
 flags.DEFINE_float('train_ratio', 0.7, '')
 flags.DEFINE_float('eval_ratio', 0.15, '')
 flags.DEFINE_float('initial_lambda', 0.0, 'Initial Value of Lambda.')
 flags.DEFINE_float('beta', 0.5, 'Beta: Upper bound on CVaR.')
-flags.DEFINE_float('alpha', 0.95,
+flags.DEFINE_float('alpha', 0.67,
                    'Alpha: Percentile risk for definition of VaR.')
 flags.DEFINE_float('lambda_lr', 0.0, 'Learning Rate for Lambda.')
 flags.DEFINE_float('var_lr', 0.0, 'Learning Rate for VaR.')
@@ -68,7 +68,7 @@ flags.DEFINE_integer('user_embedding_size', 0, 'Size of the user embedding.')
 flags.DEFINE_integer('hidden_size', 128, 'Size of the LSTM hidden layer.')
 flags.DEFINE_float('topic_affinity_update_threshold', 3.0,
                    'Topic affinity update threshold.')
-flags.DEFINE_float('affinity_update_delta', 0.5,
+flags.DEFINE_float('affinity_update_delta', 0.0,
                    'Topic affinitiy update delta.')
 flags.DEFINE_integer(
     'checkpoint_every', 1000, 'Number of iterations after'
@@ -78,7 +78,7 @@ flags.DEFINE_float(
     'Weight to the health score in the optimized reward.'
     'Reward(trajectory) = (1-lambda)*avg_rating + lambda*health_score')
 flags.DEFINE_boolean(
-    'eval_deterministic', False,
+    'eval_deterministic', True,
     'Whether to evaluate the model using a deterministic '
     '(argmax) policy instead of sampling from Softmax')
 
@@ -99,9 +99,9 @@ flags.DEFINE_string('initial_model', None,
 flags.DEFINE_boolean('stateful_rnn', True,
                      'Whether to use a stateful RNN in the agent.')
 
-DEFAULT_EMBEDDING_PATH = None
-DEFAULT_OUTPUT_DIRECTORY = None
-DEFAULT_DATA_DIRECTORY = None
+DEFAULT_EMBEDDING_PATH = '../environments/recommenders/movielens_factorization_surprise_small.json'
+DEFAULT_OUTPUT_DIRECTORY = 'results'
+DEFAULT_DATA_DIRECTORY = '../ml-data/new'
 
 
 flags.DEFINE_string(
@@ -150,7 +150,7 @@ def _warm_start(experiment_name, results_dir):
   """Infers the number of batches that have already been checkpointed to resume from there."""
   checkpointed_models_batch_numbers = []
   filenames = []
-  filename_pattern = os.path.join(results_dir,
+  filename_pattern = os.path.join('/media/ashudeep/DATA/saved_models',
                                   'agent_model_' + experiment_name + '_*.h5')
   logging.info('Looking for %s', filename_pattern)
   for filename in file_util.glob(filename_pattern):
@@ -250,7 +250,7 @@ def _maybe_checkpoint(batch_number, agent, config):
   tmp_model_file_path = os.path.join(tempfile.gettempdir(), 'tmp_model.h5')
   agent.model.save(tmp_model_file_path)
   model_file_path = os.path.join(
-      config.results_dir,
+      '/media/ashudeep/DATA/saved_models',
       f'agent_model_{config.experiment_name}_{batch_number}.h5')
   file_util.copy(tmp_model_file_path, model_file_path, overwrite=True)
   logging.info('Model saved at %s', model_file_path)
@@ -279,12 +279,27 @@ def _training_loop(env, agent, config):
 
 
 def _setup_directories(config):
-  file_util.makedirs(config['results_dir'])
+  try:
+    file_util.makedirs(config['results_dir'])
+    file_util.makedirs('./runs/{}'.format(config['experiment_name']))
+  except FileExistsError:
+    pass
   with file_util.open(
       os.path.join(config['results_dir'],
                    config['experiment_name'] + '_info.txt'), 'w') as outfile:
     outfile.write(fg_core.to_json(config))
 
+def log_tfboard(metrics, writer, step):
+  summary = tf.Summary(value=[tf.Summary.Value(tag='reward/train', simple_value=metrics['train']['rewards']),
+                              tf.Summary.Value(tag='reward/eval', simple_value=metrics['eval']['rewards']),
+                              tf.Summary.Value(tag='reward/test', simple_value=metrics['test']['rewards']),
+                              tf.Summary.Value(tag='health/train', simple_value=metrics['train']['health']),
+                              tf.Summary.Value(tag='health/eval', simple_value=metrics['eval']['health']),
+                              tf.Summary.Value(tag='health/test', simple_value=metrics['test']['health']),
+                              tf.Summary.Value(tag='cvar/train', simple_value=metrics['test']['cvar']),
+                              tf.Summary.Value(tag='cvar/eval', simple_value=metrics['test']['cvar']),
+                              tf.Summary.Value(tag='cvar/test', simple_value=metrics['test']['cvar'])])
+  writer.add_summary(summary, step)
 
 def train(config):
   """Trains and returns an Safe RNN agent."""
@@ -294,7 +309,8 @@ def train(config):
   envs = _envs_builder(config, config['num_episodes_per_update'])
   config = types.SimpleNamespace(**config)
   agent = _agent_builder(envs[0], config)
-
+  writer = tf.summary.FileWriter('./runs/{}'.format(config.experiment_name))
+  # writer.add_summary(tf.Summary(value=tf.summary.text("Config", tf.convert_to_tensor(repr(config)))),0)
   while config.warm_start.initial_batch < config.num_updates:
     last_checkpoint = _training_loop(envs, agent, config)
     agent.set_batch_size(1)
@@ -306,7 +322,9 @@ def train(config):
         deterministic=config.eval_deterministic)
     agent.set_batch_size(len(envs))
     step = config.warm_start.initial_batch * config.num_episodes_per_update
-    yield step, last_checkpoint, metrics
+    print(step, last_checkpoint, metrics)
+    log_tfboard(metrics, writer, step)
+
 
   # Do one final eval at the end.
   agent.set_batch_size(1)
@@ -317,7 +335,7 @@ def train(config):
       num_users=config.num_users_eval_final,
       deterministic=config.eval_deterministic)
   agent.set_batch_size(len(envs))
-  return metrics
+  return agent
 
 
 def _configure_environment_from_flags():
@@ -332,8 +350,8 @@ def _configure_environment_from_flags():
       user_config=user_config,
       train_eval_test=[FLAGS.train_ratio, FLAGS.eval_ratio, test_ratio],
       embeddings_path=FLAGS.embedding_path,
-      embedding_movie_key='movie_emb',
-      embedding_user_key='user_emb',
+      embedding_movie_key='movies',
+      embedding_user_key='users',
       lambda_non_violent=FLAGS.multiobjective_lambda)
 
 
@@ -373,8 +391,8 @@ def _directly_configure_from_flags(fields):
 def _set_experiment_name(config):
   experiment_name = 'id_' + hashlib.sha1(repr(sorted(
       config.items())).encode()).hexdigest()
-  if FLAGS.expt_name_suffix:
-    experiment_name += '_' + FLAGS.expt_name_suffix
+  # if FLAGS.expt_name_suffix:
+  #   experiment_name += '_' + FLAGS.expt_name_suffix
   config['experiment_name'] = experiment_name
 
 

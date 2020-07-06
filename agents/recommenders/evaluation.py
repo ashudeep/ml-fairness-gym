@@ -107,11 +107,12 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
         if plot_histogram:
           current_trajectory.append(slate[0])
         observation, reward, _, _ = env.step(slate)
-        if slate[0] in recs_histogram:
-          recs_histogram[slate[0]] = recs_histogram[slate[0]] + 1  
-        else:
-          recs_histogram[slate[0]] = 1
-          recs_histogram_keys_list[slate[0]] = len(recs_histogram.keys())
+        if plot_histogram:
+          if slate[0] in recs_histogram:
+            recs_histogram[slate[0]] = recs_histogram[slate[0]] + 1  
+          else:
+            recs_histogram[slate[0]] = 1
+            recs_histogram_keys_list[slate[0]] = len(recs_histogram.keys())
         if stepwise_plot:
           # print(reward, risk_score_extractor(observation))
           stepwise_rewards[step_number].append(reward)
@@ -148,7 +149,6 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       axs[0].legend()
       axs[1].legend()
       plt.show()
-    num_unique_docs_recommended = len(recs_histogram.keys())
     # Set the learning phase back to 1.
     tf.keras.backend.set_learning_phase(1)
     if scatter_plot_trajectories:
@@ -158,9 +158,10 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
         'health': np.mean(health),
         'ratings': np.mean(ratings),
         'var': var,
-        'cvar': cvar,
-        'unique': num_unique_docs_recommended
+        'cvar': cvar
     }
+    if plot_histogram:
+      results[pool]['unique_recs'] = len(recs_histogram.keys())
 
   if len(results) == 1:  # No train/eval/test split, just return one value.
     return results['all']
