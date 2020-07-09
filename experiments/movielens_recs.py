@@ -106,9 +106,9 @@ flags.DEFINE_boolean('stateful_rnn', True,
                      'Whether to use a stateful RNN in the agent.')
             
 
-DEFAULT_EMBEDDING_PATH = '../environments/recommenders/movielens_factorization_surprise_small.json'
-DEFAULT_OUTPUT_DIRECTORY = '/media/ashudeep/DATA/saved_models/'
-DEFAULT_DATA_DIRECTORY = '../ml-data/new'
+DEFAULT_EMBEDDING_PATH = '/share/thorsten/as3354/saferecs/data/movielens_factorization_surprise_small.json'
+DEFAULT_OUTPUT_DIRECTORY = '/share/thorsten/as3354/saferecs/results/'
+DEFAULT_DATA_DIRECTORY = '/share/thorsten/as3354/saferecs/data/ml-data/new/'
 
 
 flags.DEFINE_string(
@@ -157,7 +157,7 @@ def _warm_start(experiment_name, results_dir):
   """Infers the number of batches that have already been checkpointed to resume from there."""
   checkpointed_models_batch_numbers = []
   filenames = []
-  filename_pattern = os.path.join('/media/ashudeep/DATA/saved_models',
+  filename_pattern = os.path.join(DEFAULT_OUTPUT_DIRECTORY,
                                   'agent_model_' + experiment_name + '_*.h5')
   logging.info('Looking for %s', filename_pattern)
   for filename in file_util.glob(filename_pattern):
@@ -247,6 +247,7 @@ def _update_model(batch_number, agent, config):
   agent.empty_buffer()
   if batch_number % 100 == 0:
     logging.info('Batch: %d, Training loss:%f', batch_number, train_loss_val)
+  return batch_number, train_loss_val
 
 
 def _maybe_checkpoint(batch_number, agent, config):
@@ -257,7 +258,7 @@ def _maybe_checkpoint(batch_number, agent, config):
   tmp_model_file_path = os.path.join(tempfile.gettempdir(), 'tmp_model.h5')
   agent.model.save(tmp_model_file_path)
   model_file_path = os.path.join(
-      '/media/ashudeep/DATA/saved_models',
+      DEFAULT_OUTPUT_DIRECTORY,
       f'agent_model_{config.experiment_name}_{batch_number}.h5')
   file_util.copy(tmp_model_file_path, model_file_path, overwrite=True)
   logging.info('Model saved at %s', model_file_path)
@@ -265,7 +266,7 @@ def _maybe_checkpoint(batch_number, agent, config):
   return model_file_path
 
 
-def _training_loop(env, agent, config):
+def _training_loop(env, agent, config, writer):
   """Runs training and returns most recent checkpoint."""
   for env_ in env:
     env_._environment.set_active_pool('train')  # pylint: disable=protected-access
@@ -274,7 +275,9 @@ def _training_loop(env, agent, config):
   while batch_number < config.num_updates:
     batch_number += 1
     _run_one_parallel_batch(env, agent, config)
-    _update_model(batch_number, agent, config)
+    batch_number, training_loss = _update_model(batch_number, agent, config)
+    summary = tf.Summary(value=[tf.Summary.Value(tag='training_loss', simple_value=training_loss)])
+    writer.add_summary(summary, batch_number)
     checkpoint = _maybe_checkpoint(batch_number, agent, config)
     if checkpoint:
       last_checkpoint = checkpoint
@@ -316,10 +319,10 @@ def train(config):
   envs = _envs_builder(config, config['num_episodes_per_update'])
   config = types.SimpleNamespace(**config)
   agent = _agent_builder(envs[0], config)
-  writer = tf.summary.FileWriter('./runs/{}'.format(config.experiment_name))
+  writer = tf.summary.FileWriter(os.path.join(config.results_dir, 'runs/{}'.format(config.experiment_name)))
   # writer.add_summary(tf.Summary(value=tf.summary.text("Config", tf.convert_to_tensor(repr(config)))),0)
   while config.warm_start.initial_batch < config.num_updates:
-    last_checkpoint = _training_loop(envs, agent, config)
+    last_checkpoint = _training_loop(envs, agent, config, writer)
     agent.set_batch_size(1)
     metrics = evaluation.evaluate_agent(
         agent,
@@ -332,7 +335,7 @@ def train(config):
     print(step, last_checkpoint, metrics)
     log_tfboard(metrics, writer, step)
     if config.lambda_cvar > 0:
-      summary = tf.Summary(value=[tf.Summary.Value(tag='training_cvar', simple_value=agent.var)])
+      summary = tf.Summary(value=[tf.Summary.Value(tag='training_var', simple_value=agent.var)])
       writer.add_summary(summary, step)
 
 

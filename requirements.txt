@@ -14,7 +14,7 @@ seaborn
 simplejson
 sklearn
 statsmodels
-tensorflow==1.15.2
+tensorflow==1.15
 tqdm
 dopamine-rl==2.0.5
 gast==0.3.2

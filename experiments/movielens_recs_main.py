@@ -17,7 +17,7 @@
 """Experiment runner for movielens cvar experiments."""
 
 import sys
-sys.path.append('../')
+sys.path.append('/home/as3354/ml-fairness-gym/')
 from absl import app
 from absl import flags
 from experiments import movielens_recs

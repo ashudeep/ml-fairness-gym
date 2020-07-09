@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH -J lambda_cvar_0.001_lr_0.0001.job
+#SBATCH -o /share/thorsten/as3354/saferecs/slurm_outputs/%j.out
+#SBATCH -e /share/thorsten/as3354/saferecs/slurm_outputs/%j.err
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=1 
+#SBATCH --cpus-per-task=1 
+#SBATCH --get-user-env 
+#SBATCH -t 72:00:00 
+#SBATCH --mem-per-cpu=5000
+#SBATCH --mem=5000M
+#SBATCH --partition=mpi-cpus
+python $HOME/ml-fairness-gym/experiments/movielens_recs_main.py --lambda_cvar 0.001 --lr 0.0001
