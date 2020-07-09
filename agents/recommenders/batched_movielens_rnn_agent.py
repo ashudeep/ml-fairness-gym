@@ -192,7 +192,7 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
                dropout=0.0, user_id_input=True,
                random_seed=None,
                stateful=False,
-               batch_size=None):
+               batch_size=None, update_method="alternate", lambda_cvar=None):
     self.user_embedding_size = user_embedding_size
     self.num_users = observation_space['user']['user_id'].n
     self.padding_user_id_token = self.num_users
@@ -229,7 +229,7 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
         min_cost,
         load_from_checkpoint=load_from_checkpoint,
         regularization_coeff=regularization_coeff,
-        random_seed=random_seed)
+        random_seed=random_seed, update_method=update_method, lambda_cvar=lambda_cvar)
     self._last_rec = None
     self._sequence = Sequence(
         self.action_space_size,

@@ -17,9 +17,10 @@
 """Tests for safe_rl_recs.rnn_agent."""
 from absl import flags
 from absl.testing import absltest
-import.agents.recommenders.rnn_agent as rnn_agent
-import.agents.recommenders.rnn_cvar_agent as rnn_cvar_agent
-import.environments.recommenders.restaurant_toy_recsim as restaurant_toy_recsim
+import agents.recommenders.rnn_agent as rnn_agent
+import agents.recommenders.rnn_cvar_agent as rnn_cvar_agent
+import agents.recommenders.rnn_cvar_agent_sgd as rnn_cvar_agent_sgd
+import environments.recommenders.restaurant_toy_recsim as restaurant_toy_recsim
 
 FLAGS = flags.FLAGS
 
@@ -100,7 +101,6 @@ class SafeRNNAgentTest(RNNAgentTest):
     self.agent.empty_buffer()
     self.agent.simulate(self.env, 2, eval_mode=True, deterministic=True)
     self.agent.model_update()
-
 
 if __name__ == '__main__':
   absltest.main()

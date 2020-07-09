@@ -54,7 +54,7 @@ flags.DEFINE_integer('num_users_eval_final', 1000,
                      'Number of users sampled to evaluate the final agent.')
 flags.DEFINE_integer('eval_every', 100,
                      'Evaluate the agent after these many steps.')
-flags.DEFINE_integer('num_ep_per_update', 64,
+flags.DEFINE_integer('num_ep_per_update', 128,
                      'Number of episodes to generate for each training step.')
 flags.DEFINE_enum('optimizer_name', 'Adam', ['Adam', 'SGD', 'Adagrad'],
                   'Name of the optimizer (choices: Adam, SGD)')
@@ -77,6 +77,10 @@ flags.DEFINE_float(
     'multiobjective_lambda', 0.0,
     'Weight to the health score in the optimized reward.'
     'Reward(trajectory) = (1-lambda)*avg_rating + lambda*health_score')
+flags.DEFINE_float(
+    'lambda_cvar_mo', 0.0,
+    'Weight to the CVaR of the health score in the optimized reward.'
+    'Reward(trajectory) = (1-lambda)*avg_rating + lambda*cvar_health_score')
 flags.DEFINE_boolean(
     'eval_deterministic', True,
     'Whether to evaluate the model using a deterministic '
@@ -94,13 +98,16 @@ flags.DEFINE_float(
     'Activity regularization coefficient for softmax layers in RNN agent.')
 flags.DEFINE_float('dropout', 0.3,
                    'Dropout for dense layers in RNN agent during training.')
+flags.DEFINE_float('lambda_cvar', 0.01,
+                   'lambda_cvar for the agent.')                  
 flags.DEFINE_string('initial_model', None,
                     'Path for the initial model file for the agent.')
 flags.DEFINE_boolean('stateful_rnn', True,
                      'Whether to use a stateful RNN in the agent.')
+            
 
 DEFAULT_EMBEDDING_PATH = '../environments/recommenders/movielens_factorization_surprise_small.json'
-DEFAULT_OUTPUT_DIRECTORY = 'results'
+DEFAULT_OUTPUT_DIRECTORY = '/media/ashudeep/DATA/saved_models/'
 DEFAULT_DATA_DIRECTORY = '../ml-data/new'
 
 
@@ -324,6 +331,9 @@ def train(config):
     step = config.warm_start.initial_batch * config.num_episodes_per_update
     print(step, last_checkpoint, metrics)
     log_tfboard(metrics, writer, step)
+    if config.lambda_cvar > 0:
+      summary = tf.Summary(value=[tf.Summary.Value(tag='training_cvar', simple_value=agent.var)])
+      writer.add_summary(summary, step)
 
 
   # Do one final eval at the end.
@@ -363,7 +373,7 @@ def configure_expt_from_flags():
       'num_users_eval', 'num_users_eval_final', 'optimizer_name', 'num_updates',
       'eval_deterministic', 'gamma', 'clipnorm', 'checkpoint_every',
       'regularization_coeff', 'dropout', 'results_dir',
-      'momentum', 'eval_every', 'stateful_rnn'
+      'momentum', 'eval_every', 'stateful_rnn', 'lambda_cvar'
   ])
   # Need a little bit of translating in the names.
   config.update({

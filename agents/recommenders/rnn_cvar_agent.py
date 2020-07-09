@@ -40,7 +40,8 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
                min_cost=0.0,
                load_from_checkpoint=None,
                regularization_coeff=0.0,
-               random_seed=None):
+               random_seed=None, update_method='traditional',
+               lambda_cvar=None):
     """RNN Agent with safety constraints.
 
     Args:
@@ -78,7 +79,6 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
         random_seed=random_seed)
     self.curr_safety_costs = []
     self.policy_var = None  # uninitialized
-    self.lmbda = initial_lambda
     self.alpha = alpha
     self.beta = beta
     self.min_cost = min_cost
@@ -90,6 +90,16 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
     self.var = 0.5 * (self.max_cost - self.min_cost)
     self.constant_baseline = 0.0
     self.empty_buffer()
+    if update_method not in ['traditional', 'alternate']:
+      raise ValueError("update_method not known.")
+    self.update_method = update_method
+    if update_method == "alternate":
+      if lambda_cvar is None:
+        raise ValueError("lambda_cvar must be passed in the constructor.")
+      self.lmbda = lambda_cvar
+    else:
+      self.lmbda = initial_lambda
+    
 
   def empty_buffer(self):
     """Clears the history stored by the agent."""
@@ -151,12 +161,20 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
       self.change_model_lr(learning_rate)
     if batch_size is None:
       batch_size = len(self.replay_buffer['reward_seqs'])
-    curr_var = self.var
+    if self.update_method=="traditional":
+      curr_var = self.var
+    elif self.update_method=="alternate":
+      self.var = self.compute_current_var()
     training_history = self._update_params()
-    self._update_var(var_learning_rate)
-    self._update_lambda(curr_var, lambda_learning_rate)
+    if self.update_method == "traditional":
+      self._update_var(var_learning_rate)
+      self._update_lambda(curr_var, lambda_learning_rate)
     return training_history, self.var, self.lmbda
 
+  def compute_current_var(self):
+        """Use the trajectories stored in the model to compute the VaR of the sample."""
+        return np.percentile(self.replay_buffer['safety_costs'], 100*self.alpha)
+    
   def _update_params(self):
     formatted_data = utils.format_data_safe_rl(self.replay_buffer, self.gamma,
                                                self.constant_baseline)
