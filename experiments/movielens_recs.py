@@ -33,6 +33,7 @@ from agents.recommenders import batched_movielens_rnn_agent
 from agents.recommenders import evaluation
 from environments.recommenders import movie_lens_dynamic
 import tensorflow.compat.v1 as tf
+from directory_paths import * 
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('ep_length', 50, 'Maximum Episode Length.')
@@ -104,11 +105,6 @@ flags.DEFINE_string('initial_model', None,
                     'Path for the initial model file for the agent.')
 flags.DEFINE_boolean('stateful_rnn', True,
                      'Whether to use a stateful RNN in the agent.')
-            
-
-DEFAULT_EMBEDDING_PATH = '/share/thorsten/as3354/saferecs/data/movielens_factorization_surprise_small.json'
-DEFAULT_OUTPUT_DIRECTORY = '/share/thorsten/as3354/saferecs/results/'
-DEFAULT_DATA_DIRECTORY = '/share/thorsten/as3354/saferecs/data/ml-data/new/'
 
 
 flags.DEFINE_string(
