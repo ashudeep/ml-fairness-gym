@@ -126,14 +126,15 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
            reward,
            observation,
            eval_mode=False,
-           deterministic=False):
+           deterministic=False,
+           temperature=1.0):
     """Update the model using the reward, and recommends the next slate."""
     if observation['response']:  # Response is None for the first step.
       self.curr_safety_costs.append(self._get_safety_cost(observation))
     else:
       self.curr_safety_costs.append(None)  # first step in the user's episode.
     return super(SafeRNNAgent, self).step(reward, observation, eval_mode,
-                                          deterministic)
+                                          deterministic, temperature=temperature)
 
   def model_update(self, num_epochs=1, batch_size=None,
                    learning_rate=None,

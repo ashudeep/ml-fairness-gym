@@ -133,13 +133,14 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
            reward,
            observation,
            eval_mode=False,
-           deterministic=False):
+           deterministic=False,
+           temperature=1.0):
     """Update the model using the reward, and recommends the next slate."""
     self.curr_reward_list[self.curr_trajectory_length] = reward
     self.curr_trajectory_length += 1
 
     # make next recommendation
-    softmax_probs = self.get_model_prediction()[0]
+    softmax_probs = self.get_model_prediction()[0] * temperature
     rec = self._choose_rec_from_softmax(softmax_probs, deterministic)
     self.curr_recommendation_list[self.curr_trajectory_length] = rec
     return [rec]  # return the slate

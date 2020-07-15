@@ -294,10 +294,10 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
     self.model.set_weights(weights)
     logging.info('Done setting batch size')
 
-  def step(self, reward, observation, eval_mode=False, deterministic=False):
+  def step(self, reward, observation, eval_mode=False, deterministic=False, temperature=1.0):
     """Recommend the next slate."""
     self._update_sequence(self._last_rec, reward, observation)
-    softmax_probs = self.get_model_prediction()
+    softmax_probs = self.get_model_prediction() * temperature
     self._last_rec = self._choose_rec_from_softmax(softmax_probs, deterministic)
     return np.expand_dims(self._last_rec, -1)
 

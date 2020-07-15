@@ -46,6 +46,7 @@ def plot_recs_hists(recs_histogram, pool):
   plt.show()
 
 def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
+                  softmax_temperature=1.0,
                    scatter_plot_trajectories=False, figure_file_obj=None,
                    risk_score_extractor=violence_risk, plot_histogram=False, 
                    stepwise_plot=False, only_evaluate_pool=None):
@@ -95,7 +96,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
     agent.epsilon = 0.0  # Turn off any exploration.
     # Set the learning phase to 0 i.e. evaluation to not use dropout.
     # Generate num_users trajectories.
-    for user_number in range(num_users):
+    for _ in range(num_users):
       # TODO(): Clean the logged variables by making a data class.
       curr_user_reward = 0.0
       curr_user_health = 0.0
@@ -106,7 +107,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       observation = env.reset()
       for step_number in range(max_episode_length):
         slate = agent.step(reward, observation, eval_mode=True,
-                           deterministic=deterministic)
+                           deterministic=deterministic, temperature=softmax_temperature)
         if plot_histogram:
           current_trajectory.append(slate[0])
         observation, reward, _, _ = env.step(slate)

@@ -33,6 +33,8 @@ import inspect
 import hashlib
 import copy
 import sys
+import json
+import pickle as pkl
 sys.path.append("..")
 
 FLAGS = flags.FLAGS
@@ -96,12 +98,12 @@ flags.DEFINE_float(
 flags.DEFINE_float('dropout', 0.3,
                    'Dropout for dense layers in RNN agent during training.')
 flags.DEFINE_float('lambda_cvar', 0.0,
-                   'lambda_cvar for the agent.')                  
+                   'lambda_cvar for the agent.')
 flags.DEFINE_string('initial_model', None,
                     'Path for the initial model file for the agent.')
 flags.DEFINE_boolean('stateful_rnn', True,
                      'Whether to use a stateful RNN in the agent.')
-            
+
 flags.DEFINE_string(
     'embedding_path', DEFAULT_EMBEDDING_PATH,
     'Path to store user and movie embeddings as a pickle or json file.')
@@ -324,6 +326,9 @@ def train(config):
     envs = _envs_builder(config, config['num_episodes_per_update'])
     config_str = fg_core.to_json(config)
     config = types.SimpleNamespace(**config)
+    pkl.dump(config, open('config.pkl', 'wb'))
+    json.dump(config_str, open('config_.json', 'w'))
+    print("Config has been saved")
     agent = _agent_builder(envs[0], config)
     writer = tf.summary.FileWriter(os.path.join(
         config.results_dir, 'runs/{}'.format(config.experiment_name)))
@@ -410,7 +415,7 @@ def _set_experiment_name(config):
     experiment_name = 'id_' + hashlib.sha1(repr(sorted(
         config.items())).encode()).hexdigest()
     if FLAGS.expt_name_suffix:
-      experiment_name += '_' + FLAGS.expt_name_suffix
+        experiment_name += '_' + FLAGS.expt_name_suffix
     config['experiment_name'] = experiment_name
 
 
