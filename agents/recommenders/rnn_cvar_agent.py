@@ -161,12 +161,12 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
       self.change_model_lr(learning_rate)
     if batch_size is None:
       batch_size = len(self.replay_buffer['reward_seqs'])
-    if self.update_method=="traditional":
-      curr_var = self.var
-    elif self.update_method=="alternate":
+    curr_var = self.var
+    if self.update_method=="alternate":
       self.var = self.compute_current_var()
     training_history = self._update_params()
     if self.update_method == "traditional":
+      logging.info("Updating VaR and Lambda.")
       self._update_var(var_learning_rate)
       self._update_lambda(curr_var, lambda_learning_rate)
     return training_history, self.var, self.lmbda

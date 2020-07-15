@@ -110,7 +110,7 @@ class Dataset(object):
 
     for movie_ in self.get_movies():
       movie_.movie_vec = initial_embeddings.movies[movie_.doc_id()]
-      assert (len(movie_.movie_vec) > len(GENRES)
+      assert (len(movie_.movie_vec) >= len(GENRES)
              ), 'The movie embeddings must include genre dimensions.'
     for user_ in self.get_users():
       user_.topic_affinity = np.copy(initial_embeddings.users[user_.user_id])

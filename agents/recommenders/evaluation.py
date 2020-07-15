@@ -36,17 +36,19 @@ def violence_risk(observation):
 def health_risk(observation):
   return 1-observation['response'][0]['health_score']
 
-def plot_recs_hists(recs_histogram, pool, ax):
-  ax.plot(sorted(recs_histogram.values(), reverse=True), marker='.')
-  print("Most common 5 recommendations are:", recs_histogram.most_common(5))
-  ax.set(ylabel='Number of times recommended in the pool.', xlabel ='Movie index (sorted by frequency of recommendation)')
-  ax.set_title('Recommendation frequency {}.'.format(pool))
-    
+def plot_recs_hists(recs_histogram, pool):
+  plt.bar(np.arange(len(recs_histogram))+1, sorted(recs_histogram.values(), reverse=True))
+
+  print("Most common 10 recommendations are:", recs_histogram.most_common(10))
+  plt.ylabel('Freq of rec')
+  plt.xlabel('Movie index (sorted by frequency of recommendation)')
+  plt.title('Recommendation frequency {}.'.format(pool))
+  plt.show()
 
 def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                    scatter_plot_trajectories=False, figure_file_obj=None,
                    risk_score_extractor=violence_risk, plot_histogram=False, 
-                   stepwise_plot=False):
+                   stepwise_plot=False, only_evaluate_pool=None):
   """Runs an agent-env simulation to evaluate average reward and safety costs.
 
   Args:
@@ -68,6 +70,8 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
   results = {}
   if hasattr(env._environment, 'set_active_pool'):  # pylint: disable=protected-access
     pools = ['train', 'eval', 'test']
+    if only_evaluate_pool:
+      pools = [only_evaluate_pool]
   else:
     pools = ['all']
 
@@ -78,7 +82,6 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
     else:
       assert pool == 'all'
     if plot_histogram:
-      fig, axs = plt.subplots(2, 1)
       recs_histogram = Counter({})
       recs_histogram_keys_list = {}
     rewards = []
@@ -126,8 +129,11 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       health.append(curr_user_health/float(max_episode_length))
       ratings.append(curr_user_rating/float(max_episode_length))
       if plot_histogram:
-        axs[1].plot([recs_histogram_keys_list[key] for key in current_trajectory], 
-                    label=str(observation['user']['user_id']))
+        plt.plot([recs_histogram_keys_list[key] for key in current_trajectory], 
+                    label=str(observation['user']['user_id']), marker='.')
+        plt.xlabel('Steps')
+        plt.ylabel('Document Id')
+    plt.show()
     agent.empty_buffer()
     health_risks = 1-np.array(health)
     var = np.percentile(health_risks, 100*alpha)
@@ -136,7 +142,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                  'Average Ratings = %f,VaR = %f, CVaR = %f',
                  np.mean(rewards), np.mean(health), np.mean(ratings), var, cvar)
     if plot_histogram:
-      plot_recs_hists(recs_histogram, pool, axs[0])
+      plot_recs_hists(recs_histogram, pool)
       plt.show()
     if stepwise_plot:
       stepwise_reward_means = [np.mean(rews) for rews in stepwise_rewards]
@@ -164,7 +170,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
       results[pool]['unique_recs'] = len(recs_histogram.keys())
 
   if len(results) == 1:  # No train/eval/test split, just return one value.
-    return results['all']
+    return results[only_evaluate_pool] if only_evaluate_pool else results['all']
 
   # Promote the eval results to the top-level dictionary.
   results.update(results['eval'])
