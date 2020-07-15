@@ -15,25 +15,25 @@
 
 # Lint as: python3
 """Run a CVaR-constrained Safe RL learning experiments."""
+from directory_paths import *
+import tensorflow.compat.v1 as tf
+from environments.recommenders import movie_lens_dynamic
+from agents.recommenders import evaluation
+from agents.recommenders import batched_movielens_rnn_agent
+import file_util
+import core as fg_core
+import attr
+from absl import app
+from absl import logging
+from absl import flags
+import types
+import tempfile
+import os
+import inspect
+import hashlib
+import copy
 import sys
 sys.path.append("..")
-import copy
-import hashlib
-import inspect
-import os
-import tempfile
-import types
-from absl import flags
-from absl import logging
-from absl import app
-import attr
-import core as fg_core
-import file_util
-from agents.recommenders import batched_movielens_rnn_agent
-from agents.recommenders import evaluation
-from environments.recommenders import movie_lens_dynamic
-import tensorflow.compat.v1 as tf
-from directory_paths import *
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('ep_length', 50, 'Maximum Episode Length.')
@@ -79,7 +79,7 @@ flags.DEFINE_float(
     'Weight to the health score in the optimized reward.'
     'Reward(trajectory) = (1-lambda)*avg_rating + lambda*health_score')
 flags.DEFINE_boolean(
-    'eval_deterministic', True,
+    'eval_deterministic', False,
     'Whether to evaluate the model using a deterministic '
     '(argmax) policy instead of sampling from Softmax')
 
@@ -126,276 +126,294 @@ CONFIG_NAME_TO_AGENT_ARG = {
 
 
 def _rename_keys(my_dict, key_mapper):
-  for old_name, new_name in key_mapper.items():
-    my_dict[new_name] = my_dict.pop(old_name)
-  return my_dict
+    for old_name, new_name in key_mapper.items():
+        my_dict[new_name] = my_dict.pop(old_name)
+    return my_dict
 
 
 @attr.s
 class LearningRateConfig(object):
-  theta = attr.ib()
-  var = attr.ib()
-  lambda_ = attr.ib()
+    theta = attr.ib()
+    var = attr.ib()
+    lambda_ = attr.ib()
 
 
 @attr.s
 class WarmStartConfig(object):
-  initial_batch = attr.ib()
-  filename = attr.ib()
+    initial_batch = attr.ib()
+    filename = attr.ib()
 
 
 def _warm_start(experiment_name, results_dir):
-  """Infers the number of batches that have already been checkpointed to resume from there."""
-  checkpointed_models_batch_numbers = []
-  filenames = []
-  filename_pattern = os.path.join('/media/ashudeep/DATA/saved_models',
-                                  'agent_model_' + experiment_name + '_*.h5')
-  logging.info('Looking for %s', filename_pattern)
-  for filename in file_util.glob(filename_pattern):
-    logging.info('Found %s', filename)
-    # check if the file is not empty
-    checkpointed_models_batch_numbers.append(
-        int(filename.split('_')[-1].split('.')[0]))
-    filenames.append(filename)
-  if not checkpointed_models_batch_numbers:
-    logging.info('No checkpoint found in the result directory.')
-    return WarmStartConfig(initial_batch=0, filename=None)
-  max_batch_number = max(checkpointed_models_batch_numbers)
-  fname = filenames[checkpointed_models_batch_numbers.index(max_batch_number)]
-  logging.info('Checkpoint found for batch number %d. %s', max_batch_number,
-               fname)
-  return WarmStartConfig(initial_batch=max_batch_number, filename=fname)
+    """Infers the number of batches that have already been checkpointed to resume from there."""
+    checkpointed_models_batch_numbers = []
+    filenames = []
+    filename_pattern = os.path.join(DEFAULT_OUTPUT_DIRECTORY,
+                                    'agent_model_' + experiment_name + '_*.h5')
+    logging.info('Looking for %s', filename_pattern)
+    for filename in file_util.glob(filename_pattern):
+        logging.info('Found %s', filename)
+        # check if the file is not empty
+        checkpointed_models_batch_numbers.append(
+            int(filename.split('_')[-1].split('.')[0]))
+        filenames.append(filename)
+    if not checkpointed_models_batch_numbers:
+        logging.info('No checkpoint found in the result directory.')
+        return WarmStartConfig(initial_batch=0, filename=None)
+    max_batch_number = max(checkpointed_models_batch_numbers)
+    fname = filenames[checkpointed_models_batch_numbers.index(
+        max_batch_number)]
+    logging.info('Checkpoint found for batch number %d. %s', max_batch_number,
+                 fname)
+    return WarmStartConfig(initial_batch=max_batch_number, filename=fname)
 
 
 def _envs_builder(config, num_envs):
-  """Returns a list of environments."""
-  # Make the first environment.
-  envs = [movie_lens_dynamic.create_gym_environment(config['env_config'])]
+    """Returns a list of environments."""
+    # Make the first environment.
+    envs = [movie_lens_dynamic.create_gym_environment(config['env_config'])]
 
-  # All subsequent environments are copies with different user sampler seeds.
-  for _ in range(1, num_envs):
-    logging.info('Build env')
-    envs.append(copy.deepcopy(envs[0]))
-    # Unseed the envirnment user samplers. Go crazy!
-    envs[-1]._environment._user_model._user_sampler._seed = None  # pylint: disable=protected-access
-    envs[-1]._environment._user_model.reset_sampler()  # pylint: disable=protected-access
-  return envs
+    # All subsequent environments are copies with different user sampler seeds.
+    for _ in range(1, num_envs):
+        logging.info('Build env')
+        envs.append(copy.deepcopy(envs[0]))
+        # Unseed the envirnment user samplers. Go crazy!
+        envs[-1]._environment._user_model._user_sampler._seed = None  # pylint: disable=protected-access
+        envs[-1]._environment._user_model.reset_sampler()  # pylint: disable=protected-access
+    return envs
 
 
 def _agent_builder(env, config, agent_ctor=None):
-  """Returns a fully configured agent."""
-  if agent_ctor is None:
-    agent_ctor = batched_movielens_rnn_agent.MovieLensRNNAgent
+    """Returns a fully configured agent."""
+    if agent_ctor is None:
+        agent_ctor = batched_movielens_rnn_agent.MovieLensRNNAgent
 
-  config.warm_start = _warm_start(config.experiment_name, config.results_dir)
+    config.warm_start = _warm_start(config.experiment_name, config.results_dir)
 
-  # Using vars builtin to convert SimpleNamespace config to dict.
-  config_args = _rename_keys(
-      copy.deepcopy(vars(config)), CONFIG_NAME_TO_AGENT_ARG)
+    # Using vars builtin to convert SimpleNamespace config to dict.
+    config_args = _rename_keys(
+        copy.deepcopy(vars(config)), CONFIG_NAME_TO_AGENT_ARG)
 
-  config_args.update({'load_from_checkpoint': config.warm_start.filename})
+    config_args.update({'load_from_checkpoint': config.warm_start.filename})
 
-  # Filter out config values that are not agent constructor arguments.
-  ctor_args = set(inspect.getfullargspec(agent_ctor).args)
-  for key in list(config_args):
-    if key not in ctor_args:
-      del config_args[key]
+    # Filter out config values that are not agent constructor arguments.
+    ctor_args = set(inspect.getfullargspec(agent_ctor).args)
+    for key in list(config_args):
+        if key not in ctor_args:
+            del config_args[key]
 
-  return agent_ctor(env.observation_space, env.action_space, **config_args)
+    return agent_ctor(env.observation_space, env.action_space, **config_args)
 
 
 def _run_one_parallel_batch(envs, agent, config):
-  """Simulate one batch of training interactions in parallel."""
-  rewards = [0 for _ in envs]
-  observations = [env.reset() for env in envs]
-  for _ in range(config.max_episode_length):
-    logging.debug('starting agent step')
-    slates = agent.step(rewards, observations)
-    logging.debug('starting envs step')
-    observations, rewards, _, _ = zip(
-        *[env.step(slate) for slate, env in zip(slates, envs)])
-    logging.debug('done envs step')
-    assert (len({obs['user']['user_id'] for obs in observations}) > 1 or
-            len(observations) == 1
-           ), 'In a parallel batch there should be many different users!'
-  agent.end_episode(rewards, observations, eval_mode=True)
+    """Simulate one batch of training interactions in parallel."""
+    rewards = [0 for _ in envs]
+    observations = [env.reset() for env in envs]
+    for _ in range(config.max_episode_length):
+        logging.debug('starting agent step')
+        slates = agent.step(rewards, observations)
+        logging.debug('starting envs step')
+        observations, rewards, _, _ = zip(
+            *[env.step(slate) for slate, env in zip(slates, envs)])
+        logging.debug('done envs step')
+        assert (len({obs['user']['user_id'] for obs in observations}) > 1 or
+                len(observations) == 1
+                ), 'In a parallel batch there should be many different users!'
+    agent.end_episode(rewards, observations, eval_mode=True)
 
 
 def _get_learning_rate(batch, config):
-  del batch  # Unused.
-  return LearningRateConfig(
-      theta=config.learning_rate,
-      var=config.var_learning_rate,
-      lambda_=config.lambda_learning_rate)
+    del batch  # Unused.
+    return LearningRateConfig(
+        theta=config.learning_rate,
+        var=config.var_learning_rate,
+        lambda_=config.lambda_learning_rate)
 
 
 def _update_model(batch_number, agent, config):
-  learning_rates = _get_learning_rate(batch_number, config)
-  train_loss_val, _, _ = agent.model_update(
-      learning_rate=learning_rates.theta,
-      lambda_learning_rate=learning_rates.lambda_,
-      var_learning_rate=learning_rates.var)
-  agent.empty_buffer()
-  if batch_number % 100 == 0:
-    logging.info('Batch: %d, Training loss:%f', batch_number, train_loss_val)
+    learning_rates = _get_learning_rate(batch_number, config)
+    train_loss_val, _, _ = agent.model_update(
+        learning_rate=learning_rates.theta,
+        lambda_learning_rate=learning_rates.lambda_,
+        var_learning_rate=learning_rates.var)
+    agent.empty_buffer()
+    if batch_number % 100 == 0:
+        logging.info('Batch: %d, Training loss:%f',
+                     batch_number, train_loss_val)
+    return batch_number, train_loss_val
 
 
 def _maybe_checkpoint(batch_number, agent, config):
-  """Checkpoints the model into the specified directory."""
-  if batch_number % config.checkpoint_every:
-    return None
+    """Checkpoints the model into the specified directory."""
+    if batch_number % config.checkpoint_every:
+        return None
 
-  tmp_model_file_path = os.path.join(tempfile.gettempdir(), 'tmp_model.h5')
-  agent.model.save(tmp_model_file_path)
-  model_file_path = os.path.join(
-      '/media/ashudeep/DATA/saved_models',
-      f'agent_model_{config.experiment_name}_{batch_number}.h5')
-  file_util.copy(tmp_model_file_path, model_file_path, overwrite=True)
-  logging.info('Model saved at %s', model_file_path)
-  file_util.remove(tmp_model_file_path)
-  return model_file_path
+    tmp_model_file_path = os.path.join(tempfile.gettempdir(), 'tmp_model.h5')
+    agent.model.save(tmp_model_file_path)
+    model_file_path = os.path.join(
+        DEFAULT_OUTPUT_DIRECTORY,
+        f'agent_model_{config.experiment_name}_{batch_number}.h5')
+    file_util.copy(tmp_model_file_path, model_file_path, overwrite=True)
+    logging.info('Model saved at %s', model_file_path)
+    file_util.remove(tmp_model_file_path)
+    return model_file_path
 
 
-def _training_loop(env, agent, config):
-  """Runs training and returns most recent checkpoint."""
-  for env_ in env:
-    env_._environment.set_active_pool('train')  # pylint: disable=protected-access
-  batch_number = config.warm_start.initial_batch
-  last_checkpoint = None
-  while batch_number < config.num_updates:
-    batch_number += 1
-    _run_one_parallel_batch(env, agent, config)
-    _update_model(batch_number, agent, config)
-    checkpoint = _maybe_checkpoint(batch_number, agent, config)
-    if checkpoint:
-      last_checkpoint = checkpoint
-    if batch_number % config.eval_every == 0:
-      break
+def _training_loop(env, agent, config, writer):
+    """Runs training and returns most recent checkpoint."""
+    for env_ in env:
+        env_._environment.set_active_pool(
+            'train')  # pylint: disable=protected-access
+    batch_number = config.warm_start.initial_batch
+    last_checkpoint = None
+    while batch_number < config.num_updates:
+        batch_number += 1
+        _run_one_parallel_batch(env, agent, config)
+        batch_number, training_loss = _update_model(
+            batch_number, agent, config)
+        summary = tf.Summary(value=[tf.Summary.Value(
+            tag='training_loss', simple_value=training_loss)])
+        writer.add_summary(summary, batch_number)
+        checkpoint = _maybe_checkpoint(batch_number, agent, config)
+        if checkpoint:
+            last_checkpoint = checkpoint
+        if batch_number % config.eval_every == 0:
+            break
 
-  config.warm_start.initial_batch = batch_number  # Restart here next time.
-  return last_checkpoint
+    config.warm_start.initial_batch = batch_number  # Restart here next time.
+    return last_checkpoint
 
 
 def _setup_directories(config):
-  try:
-    file_util.makedirs(config['results_dir'])
-    file_util.makedirs('./runs/{}'.format(config['experiment_name']))
-  except FileExistsError:
-    pass
-  with file_util.open(
-      os.path.join(config['results_dir'],
-                   config['experiment_name'] + '_info.txt'), 'w') as outfile:
-    outfile.write(fg_core.to_json(config))
+    try:
+        file_util.makedirs(config['results_dir'])
+        file_util.makedirs('./runs/{}'.format(config['experiment_name']))
+    except FileExistsError:
+        pass
+    with file_util.open(
+        os.path.join(config['results_dir'],
+                     config['experiment_name'] + '_info.txt'), 'w') as outfile:
+        outfile.write(fg_core.to_json(config))
+
 
 def log_tfboard(metrics, writer, step):
-  summary = tf.Summary(value=[tf.Summary.Value(tag='reward/train', simple_value=metrics['train']['rewards']),
-                              tf.Summary.Value(tag='reward/eval', simple_value=metrics['eval']['rewards']),
-                              tf.Summary.Value(tag='reward/test', simple_value=metrics['test']['rewards']),
-                              tf.Summary.Value(tag='health/train', simple_value=metrics['train']['health']),
-                              tf.Summary.Value(tag='health/eval', simple_value=metrics['eval']['health']),
-                              tf.Summary.Value(tag='health/test', simple_value=metrics['test']['health']),
-                              tf.Summary.Value(tag='cvar/train', simple_value=metrics['test']['cvar']),
-                              tf.Summary.Value(tag='cvar/eval', simple_value=metrics['test']['cvar']),
-                              tf.Summary.Value(tag='cvar/test', simple_value=metrics['test']['cvar'])])
-  writer.add_summary(summary, step)
+    summary = tf.Summary(value=[tf.Summary.Value(tag='reward/train', simple_value=metrics['train']['rewards']),
+                                tf.Summary.Value(
+                                    tag='reward/eval', simple_value=metrics['eval']['rewards']),
+                                tf.Summary.Value(
+                                    tag='reward/test', simple_value=metrics['test']['rewards']),
+                                tf.Summary.Value(
+                                    tag='health/train', simple_value=metrics['train']['health']),
+                                tf.Summary.Value(
+                                    tag='health/eval', simple_value=metrics['eval']['health']),
+                                tf.Summary.Value(
+                                    tag='health/test', simple_value=metrics['test']['health']),
+                                tf.Summary.Value(
+                                    tag='cvar/train', simple_value=metrics['test']['cvar']),
+                                tf.Summary.Value(
+                                    tag='cvar/eval', simple_value=metrics['test']['cvar']),
+                                tf.Summary.Value(tag='cvar/test', simple_value=metrics['test']['cvar'])])
+    writer.add_summary(summary, step)
+
 
 def train(config):
-  """Trains and returns an Safe RNN agent."""
-  _set_experiment_name(config)
-  logging.info('Launching experiment id: %s', config['experiment_name'])
-  _setup_directories(config)
-  envs = _envs_builder(config, config['num_episodes_per_update'])
-  config = types.SimpleNamespace(**config)
-  agent = _agent_builder(envs[0], config)
-  writer = tf.summary.FileWriter('./runs/{}'.format(config.experiment_name))
-  # writer.add_summary(tf.Summary(value=tf.summary.text("Config", tf.convert_to_tensor(repr(config)))),0)
-  while config.warm_start.initial_batch < config.num_updates:
-    last_checkpoint = _training_loop(envs, agent, config)
+    """Trains and returns an Safe RNN agent."""
+    _set_experiment_name(config)
+    logging.info('Launching experiment id: %s', config['experiment_name'])
+    _setup_directories(config)
+    envs = _envs_builder(config, config['num_episodes_per_update'])
+    config_str = fg_core.to_json(config)
+    config = types.SimpleNamespace(**config)
+    agent = _agent_builder(envs[0], config)
+    writer = tf.summary.FileWriter(os.path.join(
+        config.results_dir, 'runs/{}'.format(config.experiment_name)))
+    while config.warm_start.initial_batch < config.num_updates:
+        last_checkpoint = _training_loop(envs, agent, config, writer)
+        agent.set_batch_size(1)
+        metrics = evaluation.evaluate_agent(
+            agent,
+            envs[0],
+            alpha=config.alpha,
+            num_users=config.num_users_eval,
+            deterministic=config.eval_deterministic)
+        agent.set_batch_size(len(envs))
+        step = config.warm_start.initial_batch * config.num_episodes_per_update
+        print(step, last_checkpoint, metrics)
+        log_tfboard(metrics, writer, step)
+        summary = tf.Summary(value=[tf.Summary.Value(
+            tag='training_var', simple_value=agent.var)])
+        writer.add_summary(summary, step)
+
+    # Do one final eval at the end.
     agent.set_batch_size(1)
     metrics = evaluation.evaluate_agent(
         agent,
         envs[0],
         alpha=config.alpha,
-        num_users=config.num_users_eval,
+        num_users=config.num_users_eval_final,
         deterministic=config.eval_deterministic)
     agent.set_batch_size(len(envs))
-    step = config.warm_start.initial_batch * config.num_episodes_per_update
-    print(step, last_checkpoint, metrics)
-    log_tfboard(metrics, writer, step)
-    summary = tf.Summary(value=[tf.Summary.Value(tag='training_cvar', simple_value=agent.var)])
-    writer.add_summary(summary, step)
-
-
-  # Do one final eval at the end.
-  agent.set_batch_size(1)
-  metrics = evaluation.evaluate_agent(
-      agent,
-      envs[0],
-      alpha=config.alpha,
-      num_users=config.num_users_eval_final,
-      deterministic=config.eval_deterministic)
-  agent.set_batch_size(len(envs))
-  return agent
+    return agent
 
 
 def _configure_environment_from_flags():
-  """Returns an environment configuration from flag values."""
-  test_ratio = 1 - (FLAGS.train_ratio + FLAGS.eval_ratio)
-  user_config = movie_lens_dynamic.UserConfig(
-      topic_affinity_update_threshold=FLAGS.topic_affinity_update_threshold,
-      affinity_update_delta=FLAGS.affinity_update_delta)
-  return movie_lens_dynamic.EnvConfig(
-      seeds=movie_lens_dynamic.Seeds(None, None, None),
-      data_dir=FLAGS.movielens_data_directory,
-      user_config=user_config,
-      train_eval_test=[FLAGS.train_ratio, FLAGS.eval_ratio, test_ratio],
-      embeddings_path=FLAGS.embedding_path,
-      embedding_movie_key='movies',
-      embedding_user_key='users',
-      lambda_non_violent=FLAGS.multiobjective_lambda)
+    """Returns an environment configuration from flag values."""
+    test_ratio = 1 - (FLAGS.train_ratio + FLAGS.eval_ratio)
+    user_config = movie_lens_dynamic.UserConfig(
+        topic_affinity_update_threshold=FLAGS.topic_affinity_update_threshold,
+        affinity_update_delta=FLAGS.affinity_update_delta)
+    return movie_lens_dynamic.EnvConfig(
+        seeds=movie_lens_dynamic.Seeds(None, None, None),
+        data_dir=FLAGS.movielens_data_directory,
+        user_config=user_config,
+        train_eval_test=[FLAGS.train_ratio, FLAGS.eval_ratio, test_ratio],
+        embeddings_path=FLAGS.embedding_path,
+        embedding_movie_key='movies',
+        embedding_user_key='users',
+        lambda_non_violent=FLAGS.multiobjective_lambda)
 
 
 def configure_expt_from_flags():
-  """Returns an experiment configuration dictionary populated by flag values."""
-  config = _directly_configure_from_flags([
-      'initial_lambda', 'beta', 'alpha', 'embedding_size',
-      'user_embedding_size', 'hidden_size', 'num_hidden_layers',
-      'num_users_eval', 'num_users_eval_final', 'optimizer_name', 'num_updates',
-      'eval_deterministic', 'gamma', 'clipnorm', 'checkpoint_every',
-      'regularization_coeff', 'dropout', 'results_dir',
-      'momentum', 'eval_every', 'stateful_rnn', 'lambda_cvar'
-  ])
-  # Need a little bit of translating in the names.
-  config.update({
-      'max_episode_length': FLAGS.ep_length,
-      'lambda_learning_rate': FLAGS.lambda_lr,
-      'var_learning_rate': FLAGS.var_lr,
-      'clipval': FLAGS.clipvalue,
-      'learning_rate': FLAGS.lr,
-      'num_episodes_per_update': FLAGS.num_ep_per_update,
-      'baseline_value': FLAGS.baseline,
-      'agent_seed': None,
-      'initial_agent_model': FLAGS.initial_model,
-      'activity_regularization_coeff': FLAGS.activity_reg,
-  })
-  config['user_id_input'] = config['user_embedding_size'] > 0
-  config['env_config'] = _configure_environment_from_flags()
-  return config
+    """Returns an experiment configuration dictionary populated by flag values."""
+    config = _directly_configure_from_flags([
+        'initial_lambda', 'beta', 'alpha', 'embedding_size',
+        'user_embedding_size', 'hidden_size', 'num_hidden_layers',
+        'num_users_eval', 'num_users_eval_final', 'optimizer_name', 'num_updates',
+        'eval_deterministic', 'gamma', 'clipnorm', 'checkpoint_every',
+        'regularization_coeff', 'dropout', 'results_dir',
+        'momentum', 'eval_every', 'stateful_rnn', 'lambda_cvar'
+    ])
+    # Need a little bit of translating in the names.
+    config.update({
+        'max_episode_length': FLAGS.ep_length,
+        'lambda_learning_rate': FLAGS.lambda_lr,
+        'var_learning_rate': FLAGS.var_lr,
+        'clipval': FLAGS.clipvalue,
+        'learning_rate': FLAGS.lr,
+        'num_episodes_per_update': FLAGS.num_ep_per_update,
+        'baseline_value': FLAGS.baseline,
+        'agent_seed': None,
+        'initial_agent_model': FLAGS.initial_model,
+        'activity_regularization_coeff': FLAGS.activity_reg,
+    })
+    config['user_id_input'] = config['user_embedding_size'] > 0
+    config['env_config'] = _configure_environment_from_flags()
+    return config
 
 
 def _directly_configure_from_flags(fields):
-  """Helper function that translate flag values to a dict."""
-  return {field: getattr(FLAGS, field) for field in fields}
+    """Helper function that translate flag values to a dict."""
+    return {field: getattr(FLAGS, field) for field in fields}
 
 
 def _set_experiment_name(config):
-  experiment_name = 'id_' + hashlib.sha1(repr(sorted(
-      config.items())).encode()).hexdigest()
-  if FLAGS.expt_name_suffix:
-    experiment_name += '_' + FLAGS.expt_name_suffix
-  config['experiment_name'] = experiment_name
+    experiment_name = 'id_' + hashlib.sha1(repr(sorted(
+        config.items())).encode()).hexdigest()
+    if FLAGS.expt_name_suffix:
+      experiment_name += '_' + FLAGS.expt_name_suffix
+    config['experiment_name'] = experiment_name
 
 
 def main(_):
-  config = configure_expt_from_flags()
-  train(config)
+    config = configure_expt_from_flags()
+    train(config)
