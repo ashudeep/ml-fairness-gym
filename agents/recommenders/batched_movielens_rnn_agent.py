@@ -188,8 +188,8 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
                repeat_movies_in_episode=False,
                load_from_checkpoint=None, genre_vec_as_input=False,
                genre_vec_size=0, regularization_coeff=0.0,
-               activity_regularization=0.0,
-               dropout=0.0, user_id_input=True,
+               activity_regularization=0.0, amsgrad=False,
+               dropout=0.0, user_id_input=False,
                random_seed=None,
                stateful=False,
                batch_size=None, update_method="alternate", lambda_cvar=None):
@@ -206,6 +206,7 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
     self.genre_vec_size = genre_vec_size  # Used when genre_vec_as_input is True
     self.num_hidden_layers = num_hidden_layers
     self.activity_regularization = activity_regularization
+    self.amsgrad = amsgrad
     self.dropout = dropout
     self.user_id_input = user_id_input
     self.stateful = stateful
@@ -228,7 +229,7 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
         max_cost,
         min_cost,
         load_from_checkpoint=load_from_checkpoint,
-        regularization_coeff=regularization_coeff,
+        regularization_coeff=regularization_coeff, amsgrad=amsgrad,
         random_seed=random_seed, update_method=update_method, lambda_cvar=lambda_cvar)
     self._last_rec = None
     self._sequence = Sequence(

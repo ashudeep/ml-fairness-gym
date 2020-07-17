@@ -49,7 +49,7 @@ flags.DEFINE_float('lambda_lr', 0.0, 'Learning Rate for Lambda.')
 flags.DEFINE_float('var_lr', 0.0, 'Learning Rate for VaR.')
 flags.DEFINE_float('lr', 0.0001, 'Learning Rate for the model parameters.')
 flags.DEFINE_float('gamma', 0.1, 'Gamma for reward accumulation.')
-flags.DEFINE_float('baseline', 3, 'Baseline value for variance reduction.')
+flags.DEFINE_float('baseline', 0, 'Baseline value for variance reduction.')
 flags.DEFINE_integer(
     'num_users_eval', 100, 'Number of users sampled to evaluate'
     'during the training.')
@@ -97,6 +97,8 @@ flags.DEFINE_float(
     'Activity regularization coefficient for softmax layers in RNN agent.')
 flags.DEFINE_float('dropout', 0.3,
                    'Dropout for dense layers in RNN agent during training.')
+flags.DEFINE_boolean('amsgrad', True,
+                     'Whether to use the amsgrad version in Adam.')
 flags.DEFINE_float('lambda_cvar', 0.0,
                    'lambda_cvar for the agent.')
 flags.DEFINE_string('initial_model', None,
@@ -225,7 +227,7 @@ def _run_one_parallel_batch(envs, agent, config):
 
 
 def _get_learning_rate(batch, config):
-    del batch  # Unused.
+    del batch # unused
     return LearningRateConfig(
         theta=config.learning_rate,
         var=config.var_learning_rate,
@@ -298,23 +300,13 @@ def _setup_directories(config):
         outfile.write(fg_core.to_json(config))
 
 
-def log_tfboard(metrics, writer, step):
-    summary = tf.Summary(value=[tf.Summary.Value(tag='reward/train', simple_value=metrics['train']['rewards']),
-                                tf.Summary.Value(
-                                    tag='reward/eval', simple_value=metrics['eval']['rewards']),
-                                tf.Summary.Value(
-                                    tag='reward/test', simple_value=metrics['test']['rewards']),
-                                tf.Summary.Value(
-                                    tag='health/train', simple_value=metrics['train']['health']),
-                                tf.Summary.Value(
-                                    tag='health/eval', simple_value=metrics['eval']['health']),
-                                tf.Summary.Value(
-                                    tag='health/test', simple_value=metrics['test']['health']),
-                                tf.Summary.Value(
-                                    tag='cvar/train', simple_value=metrics['test']['cvar']),
-                                tf.Summary.Value(
-                                    tag='cvar/eval', simple_value=metrics['test']['cvar']),
-                                tf.Summary.Value(tag='cvar/test', simple_value=metrics['test']['cvar'])])
+def log_tboard(metrics, writer, step):
+    value_list = []
+    keys = ['rewards', 'health', 'cvar', 'ratings']
+    for pool in ['train', 'test', 'eval']:
+        for key in keys:
+            value_list.append(tf.Summary.Value(tag=key+'/'+pool, simple_value=metrics[pool][key]))
+    summary = tf.Summary(value=value_list)
     writer.add_summary(summary, step)
 
 
@@ -344,7 +336,7 @@ def train(config):
         agent.set_batch_size(len(envs))
         step = config.warm_start.initial_batch * config.num_episodes_per_update
         print(step, last_checkpoint, metrics)
-        log_tfboard(metrics, writer, step)
+        log_tboard(metrics, writer, step)
         summary = tf.Summary(value=[tf.Summary.Value(
             tag='training_var', simple_value=agent.var)])
         writer.add_summary(summary, step)

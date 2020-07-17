@@ -16,7 +16,7 @@
 # Lint as: python3
 """Implements a RNN RecSim agent that constrains CVaR and optimizes reward."""
 
-from absl import flags
+from absl import flags, logging
 from agents.recommenders import rnn_agent
 from agents.recommenders import utils
 import numpy as np
@@ -39,7 +39,7 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
                max_cost=1.0,
                min_cost=0.0,
                load_from_checkpoint=None,
-               regularization_coeff=0.0,
+               regularization_coeff=0.0, amsgrad=False,
                random_seed=None, update_method='traditional',
                lambda_cvar=None):
     """RNN Agent with safety constraints.

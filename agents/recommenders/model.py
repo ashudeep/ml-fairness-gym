@@ -52,6 +52,7 @@ def create_model(max_episode_length,
                  genre_vec_size=0,
                  regularization_coeff=0.0,
                  activity_regularization=0.0,
+                 amsgrad=False,
                  dropout=0.0,
                  stateful=False):
   """Returns an RNN model for sequential recommendation.
@@ -175,10 +176,10 @@ def create_model(max_episode_length,
           activity_regularizer=activity_regularizer_obj),
       name='softmax_output')(
           hidden_layer)
-  if dropout > 0:
-    output_layer = tf.keras.layers.Dropout(dropout)(output_layer)
-    output_layer = output_layer / tf.keras.backend.sum(
-        output_layer, axis=-1, keepdims=True)
+  # if dropout > 0:
+  #   output_layer = tf.keras.layers.Dropout(dropout)(output_layer)
+  #   output_layer = output_layer / tf.keras.backend.sum(
+  #       output_layer, axis=-1, keepdims=True)
 
   if not repeat_recs_in_episode:
     # TODO(): Remove the need for this argument by providing mask
@@ -207,7 +208,8 @@ def create_model(max_episode_length,
       learning_rate=learning_rate,
       momentum=momentum,
       gradient_clip_value=gradient_clip_value,
-      gradient_clip_norm=gradient_clip_norm)
+      gradient_clip_norm=gradient_clip_norm,
+      amsgrad=amsgrad)
   model.compile(
       loss='sparse_categorical_crossentropy',
       optimizer=optimizer,
@@ -219,7 +221,8 @@ def construct_optimizer(optimizer_name,
                         learning_rate=None,
                         momentum=None,
                         gradient_clip_value=None,
-                        gradient_clip_norm=None):
+                        gradient_clip_norm=None,
+                        amsgrad=False):
   """Returns an optimizer for the given optimizer_name or raises ValueError."""
   kwargs = {}
   if learning_rate:
@@ -231,6 +234,8 @@ def construct_optimizer(optimizer_name,
   if optimizer_name == 'SGD' and momentum:
     kwargs['momentum'] = momentum
   if optimizer_name == 'Adam':
+    if amsgrad:
+      kwargs['amsgrad'] = True
     optimizer = tf.keras.optimizers.Adam(**kwargs)
   elif optimizer_name == 'SGD':
     optimizer = tf.keras.optimizers.SGD(**kwargs)

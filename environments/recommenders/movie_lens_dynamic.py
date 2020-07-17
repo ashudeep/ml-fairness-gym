@@ -116,13 +116,13 @@ class Movie(document.AbstractDocument):
 class User(user.AbstractUserState):
   """Class to represent a movielens user."""
 
-  MIN_SCORE = 1
-  MAX_SCORE = 5
+  MIN_SCORE = 0
+  MAX_SCORE = 1
 
   def __init__(self,
                user_id,
-               affinity_update_delta=1.0,
-               topic_affinity_update_threshold=3.0):
+               affinity_update_delta=0.0,
+               topic_affinity_update_threshold=5.0):
     """Initializes the dynamic user.
 
     Args:
@@ -203,8 +203,8 @@ class UserModel(user.AbstractUserModel):
   def __init__(self,
                user_sampler,
                seed=None,
-               affinity_update_delta=1.0,
-               topic_affinity_update_threshold=3.0):
+               affinity_update_delta=0.0,
+               topic_affinity_update_threshold=5.0):
     """Defines the dynamic user model.
 
     Args:
