@@ -4,3 +4,4 @@
 *.sub
 *.json
 *.cpython
+*__pycache__*

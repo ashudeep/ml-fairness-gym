@@ -27,7 +27,6 @@ from absl import app
 from absl import logging
 from absl import flags
 import types
-import tempfile
 import os
 import inspect
 import hashlib
@@ -61,7 +60,7 @@ flags.DEFINE_integer('num_ep_per_update', 128,
                      'Number of episodes to generate for each training step.')
 flags.DEFINE_enum('optimizer_name', 'Adam', ['Adam', 'SGD', 'Adagrad'],
                   'Name of the optimizer (choices: Adam, SGD)')
-flags.DEFINE_integer('num_updates', 25000,
+flags.DEFINE_integer('num_updates', 50000,
                      'Number of gradient updates for the model.')
 flags.DEFINE_float('clipnorm', None, 'Norm to clip the gradient to.')
 flags.DEFINE_float('clipvalue', None, 'Value to clip the gradient to.')
@@ -251,15 +250,11 @@ def _maybe_checkpoint(batch_number, agent, config):
     """Checkpoints the model into the specified directory."""
     if batch_number % config.checkpoint_every:
         return None
-
-    tmp_model_file_path = os.path.join(tempfile.gettempdir(), 'tmp_model.h5')
-    agent.model.save(tmp_model_file_path)
     model_file_path = os.path.join(
         DEFAULT_OUTPUT_DIRECTORY,
         f'agent_model_{config.experiment_name}_{batch_number}.h5')
-    file_util.copy(tmp_model_file_path, model_file_path, overwrite=True)
+    agent.model.save(model_file_path)
     logging.info('Model saved at %s', model_file_path)
-    file_util.remove(tmp_model_file_path)
     return model_file_path
 
 

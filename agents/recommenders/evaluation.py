@@ -139,7 +139,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
             ratings.append(curr_user_rating/float(max_episode_length))
             if plot_histogram:
                 if len(np.unique(current_trajectory)) != len(current_trajectory):
-                    sys.exit(1)
+                    raise ValueError('Non-unique recommendations found for user %s.' % observation['user']['user_id'])
                 plt.plot([recs_histogram_keys_list[key] for key in current_trajectory],
                          label=str(observation['user']['user_id']), marker='.')
                 plt.xlabel('Steps')

@@ -171,10 +171,10 @@ def create_model(max_episode_length,
   output_layer = tf.keras.layers.TimeDistributed(
       tf.keras.layers.Dense(
           units=action_space_size,
-          activation='softmax',
+          # activation='softmax',
           kernel_regularizer=regularizer_obj,
           activity_regularizer=activity_regularizer_obj),
-      name='softmax_output')(
+      name='logits_output')(
           hidden_layer)
   # if dropout > 0:
   #   output_layer = tf.keras.layers.Dropout(dropout)(output_layer)
@@ -187,10 +187,13 @@ def create_model(max_episode_length,
     softmax_mask = tf.keras.layers.Input(
         batch_shape=(batch_size, max_episode_length, action_space_size),
         name='softmax_mask_input')
-    masked_output = tf.keras.layers.multiply([softmax_mask, output_layer])
-    # Renormalize
-    output_layer = masked_output / tf.keras.backend.sum(
-        masked_output, axis=-1, keepdims=True)
+    output_layer = maskedSoftmax(output_layer, softmax_mask)
+  #   output_layer = output_layer + tf.keras.layers.multiply([(softmax_mask-1.0)*1000, output_layer])
+  #   # Renormalize
+  #   # output_layer = masked_output / tf.keras.backend.sum(
+  #   #     masked_output, axis=-1, keepdims=True)
+  else:
+    output_layer = tf.keras.layers.Softmax(name='softmax_layer')(output_layer)
 
   # Setup what layers the model should expect in input arrays.
   inputs = [rec_input, reward_input]
@@ -216,6 +219,20 @@ def create_model(max_episode_length,
       sample_weight_mode='temporal')
   return model
 
+def maskedSoftmax(logits, mask):
+    """
+    Masked softmax over dim 1
+    :param logits: (N, L)
+    :param mask: (N, L)
+    :return: probabilities (N, L)
+    """
+    indices = tf.where(mask)
+    values = tf.gather_nd(logits, indices)
+    denseShape = tf.cast(tf.shape(logits), tf.int64)
+    sparseResult = tf.sparse_softmax(tf.SparseTensor(indices, values, denseShape))
+    result = tf.scatter_nd(sparseResult.indices, sparseResult.values, sparseResult.dense_shape)
+    result.set_shape(logits.shape)
+    return result
 
 def construct_optimizer(optimizer_name,
                         learning_rate=None,

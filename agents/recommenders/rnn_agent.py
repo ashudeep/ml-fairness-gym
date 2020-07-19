@@ -150,8 +150,9 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
 
     def _choose_rec_from_softmax(self, softmax_probs, deterministic):
         if np.all(np.isnan(softmax_probs)):
-            logging.fatal(
+            raise ValueError(
                 'The entire output of the softmax is NaNs. The model will not train further.')
+            
         if deterministic:
             rec = np.argmax(softmax_probs)
         else:
