@@ -197,10 +197,7 @@ def load_model(filepath,
                gradient_clip_norm=None,
                amsgrad=False):
   """Loads RNNAgent model from the path."""
-  tmp_model_file_path = os.path.join(tempfile.gettempdir(), 'tmp_model.h5')
-  file_util.copy(filepath, tmp_model_file_path, overwrite=True)
-  loaded_model = tf.keras.models.load_model(tmp_model_file_path)
-  file_util.remove(tmp_model_file_path)
+  loaded_model = tf.keras.models.load_model(filepath)
   optimizer = model.construct_optimizer(optimizer_name, learning_rate, momentum,
                                         gradient_clip_value, gradient_clip_norm, amsgrad)
   loaded_model.compile(

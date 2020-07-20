@@ -54,7 +54,9 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                    softmax_temperature=1.0,
                    scatter_plot_trajectories=False, figure_file_obj=None,
                    risk_score_extractor=violence_risk, plot_histogram=False,
-                   stepwise_plot=False, only_evaluate_pool=None):
+                   plot_trajectories=True,
+                   stepwise_plot=False, only_evaluate_pool=None,
+                   reward_health_distribution_plot=False):
     """Runs an agent-env simulation to evaluate average reward and safety costs.
 
     Args:
@@ -88,15 +90,16 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                 pool)  # pylint: disable=protected-access
         else:
             assert pool == 'all'
-        if plot_histogram:
+        if plot_histogram or plot_trajectories:
             recs_histogram = Counter({})
             recs_histogram_keys_list = {}
-        rewards = []
-        health = []
         ratings = []
+        ratings_health_user_map = {}
+        health = []
+        rewards = []
         max_episode_length = agent.max_episode_length
         if stepwise_plot:
-            stepwise_rewards = [[] for _ in range(max_episode_length)]
+            stepwise_ratings = [[] for _ in range(max_episode_length)]
             stepwise_healths = [[] for _ in range(max_episode_length)]
 
         agent.epsilon = 0.0  # Turn off any exploration.
@@ -107,17 +110,18 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
             curr_user_reward = 0.0
             curr_user_health = 0.0
             curr_user_rating = 0.0
-            if plot_histogram:
+            if plot_histogram or plot_trajectories:
                 current_trajectory = []
             reward = 0
             observation = env.reset()
+            curr_user_vector = env.environment.user_model._user_state.topic_affinity
             for step_number in range(max_episode_length):
                 slate = agent.step(reward, observation, eval_mode=True,
                                    deterministic=deterministic, temperature=softmax_temperature)
-                if plot_histogram:
-                    current_trajectory.append(slate[0])
                 observation, reward, _, _ = env.step(slate)
-                if plot_histogram:
+                rating = observation['response'][0]['rating']
+                if plot_histogram or plot_trajectories:
+                    current_trajectory.append(slate[0])
                     if slate[0] in recs_histogram:
                         recs_histogram[slate[0]] = recs_histogram[slate[0]] + 1
                     else:
@@ -126,24 +130,20 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                             recs_histogram.keys())
                 if stepwise_plot:
                     # print(reward, risk_score_extractor(observation))
-                    stepwise_rewards[step_number].append(reward)
+                    stepwise_ratings[step_number].append(rating)
                     stepwise_healths[step_number].append(
                         1-risk_score_extractor(observation))
+                curr_user_rating += rating
                 curr_user_reward += reward
                 curr_user_health += 1-risk_score_extractor(observation)
-                if 'rating' in observation['response'][0]:
-                    curr_user_rating += observation['response'][0]['rating']
             agent.end_episode(reward, observation, eval_mode=True)
-            rewards.append(curr_user_reward/float(max_episode_length))
-            health.append(curr_user_health/float(max_episode_length))
             ratings.append(curr_user_rating/float(max_episode_length))
-            if plot_histogram:
-                if len(np.unique(current_trajectory)) != len(current_trajectory):
-                    raise ValueError('Non-unique recommendations found for user %s.' % observation['user']['user_id'])
-                plt.plot([recs_histogram_keys_list[key] for key in current_trajectory],
-                         label=str(observation['user']['user_id']), marker='.')
-                plt.xlabel('Steps')
-                plt.ylabel('Document Id')
+            health.append(curr_user_health/float(max_episode_length))
+            ratings_health_user_map[str(curr_user_vector)] = (ratings[-1], health[-1])
+            rewards.append(curr_user_reward/float(max_episode_length))
+            if plot_trajectories:
+                plot_current_trajectory(
+                    current_trajectory, observation, recs_histogram_keys_list)
         plt.show()
         agent.empty_buffer()
         health_risks = 1-np.array(health)
@@ -156,23 +156,10 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
             plot_recs_hists(recs_histogram, pool)
             plt.show()
         if stepwise_plot:
-            stepwise_reward_means = [np.mean(rews)
-                                     for rews in stepwise_rewards]
-            stepwise_health_means = [np.mean(rews)
-                                     for rews in stepwise_healths]
-            _, axs = plt.subplots(1, 2)
-            axs[0].plot(stepwise_reward_means, label='Reward Mean')
-            axs[1].plot(stepwise_health_means, label='Health Mean')
-            axs[0].set_xlabel('Steps')
-            axs[1].set_xlabel('Steps')
-            axs[0].legend()
-            axs[1].legend()
-            plt.show()
-            stepwise_rewards_per_user = [[stepwise_rewards[i][user_num] for i in range(len(stepwise_rewards))] for user_num in range(len(stepwise_rewards[0]))]
-            plt.plot(np.array(stepwise_rewards_per_user).transpose())
-            plt.xlabel('Steps')
-            plt.ylabel('Reward')
-            plt.show()
+            plot_stepwise_ratings(stepwise_ratings, stepwise_healths)
+        if reward_health_distribution_plot:
+            print(ratings_health_user_map)
+            plot_reward_vs_health_distribution(ratings, health)
         # Set the learning phase back to 1.
         tf.keras.backend.set_learning_phase(1)
         if scatter_plot_trajectories:
@@ -195,16 +182,54 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
     return results
 
 
-def plot_trajectories(rewards, health, figure_file_obj):
+def plot_current_trajectory(current_trajectory, observation, recs_histogram_keys_list):
+    if len(np.unique(current_trajectory)) != len(current_trajectory):
+        raise ValueError(
+            'Non-unique recommendations found for user %s.' % observation['user']['user_id'])
+    plt.plot([recs_histogram_keys_list[key] for key in current_trajectory],
+             label=str(observation['user']['user_id']), marker='.')
+    plt.xlabel('Steps')
+    plt.ylabel('Document Id')
+
+
+def plot_stepwise_ratings(stepwise_ratings, stepwise_healths):
+    stepwise_reward_means = [np.mean(rews)
+                             for rews in stepwise_ratings]
+    stepwise_health_means = [np.mean(rews)
+                             for rews in stepwise_healths]
+    _, axs = plt.subplots(1, 2)
+    axs[0].plot(stepwise_reward_means, label='Reward Mean')
+    axs[1].plot(stepwise_health_means, label='Health Mean')
+    axs[0].set_xlabel('Steps')
+    axs[1].set_xlabel('Steps')
+    axs[0].legend()
+    axs[1].legend()
+    plt.show()
+    stepwise_ratings_per_user = [[stepwise_ratings[i][user_num] for i in range(
+        len(stepwise_ratings))] for user_num in range(len(stepwise_ratings[0]))]
+    plt.plot(np.array(stepwise_ratings_per_user).transpose())
+    plt.xlabel('Steps')
+    plt.ylabel('Reward')
+    plt.show()
+
+
+def plot_trajectories(ratings, health, figure_file_obj):
     plt.figure()
-    g = sns.jointplot(x=rewards, y=health, kind='kde')
+    g = sns.jointplot(x=ratings, y=health, kind='kde')
     g.plot_joint(plt.scatter, c='grey', s=30, linewidth=1, marker='+')
     g.ax_joint.collections[0].set_alpha(0)
-    g.set_axis_labels('$Reward$', '$Health$')
+    g.set_axis_labels('$Rating$', '$Health$')
     if figure_file_obj:
         plt.savefig(figure_file_obj, format='png')
     else:
         plt.show()
+
+
+def plot_reward_vs_health_distribution(average_ratings, average_healths):
+    h = sns.jointplot(x=average_healths, y=average_ratings)
+    h.set_axis_labels('Health', 'Ratings', fontsize=16)
+    plt.tight_layout()
+    plt.show()
 
 
 def compute_cvar(health_risks, var):
