@@ -1,7 +1,7 @@
-*.pyc
-*.job
-*.pkl
-*.sub
-*.json
-*.cpython
-*__pycache__*
+**.pyc
+**.job
+**.pkl
+**.sub
+**.json
+**.cpython
+experiments/graphite-scripts/*
