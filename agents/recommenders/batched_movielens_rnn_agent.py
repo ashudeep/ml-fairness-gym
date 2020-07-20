@@ -34,13 +34,14 @@ class Sequence(object):
   start_token = attr.ib()
   recommendations = attr.ib(factory=lambda: collections.defaultdict(list))
   rewards = attr.ib(factory=lambda: collections.defaultdict(list))
+  ratings = attr.ib(factory=lambda: collections.defaultdict(list))
   safety_cost = attr.ib(factory=lambda: collections.defaultdict(list))
   masks = attr.ib(factory=dict)
 
   @property
   def batch_size(self):
     assert (len(self.recommendations) == len(self.rewards) == len(
-        self.safety_cost))
+        self.safety_cost) == len(self.ratings))
     return len(self.recommendations)
 
   def update(self,
@@ -54,6 +55,7 @@ class Sequence(object):
     uid = (batch_position, observation['user']['user_id'])
     self.recommendations[uid].append(last_recommendation)
     self.rewards[uid].append(reward)
+    self.ratings[uid].append(observation['response'][0]['rating'] if observation['response'] else 0)
     if uid not in self.masks:
       self.masks[uid] = np.ones(self.vocab_size)
     if last_recommendation < self.vocab_size:  # Ignore OOV.
@@ -101,6 +103,7 @@ class Sequence(object):
        - users: (batch, len_sequence)
        - recommendations: (batch, len_sequence)
        - rewards: (batch, len_sequence)
+       - ratings: (batch, len_sequence)
        - safety_costs: (batch, 1, 1)
        - masks: (batch, len_sequence, vocab_size)
        - final_mask: (batch, 1, vocab_size)
@@ -120,9 +123,10 @@ class Sequence(object):
       user_vec = [user_id] * len(rewards)
       mask = self.masks[uid]
       recs = self.recommendations[uid]
+      ratings = self.ratings[uid]
       costs = np.mean(self.safety_cost[uid][1:])
-      batch.append((pos, user_vec, recs, rewards, mask, costs))
-    positions, users, recommendations, rewards, masks, costs = zip(*batch)
+      batch.append((pos, user_vec, recs, rewards, ratings, mask, costs))
+    positions, users, recommendations, rewards, ratings, masks, costs = zip(*batch)
 
     assert (list(positions) == sorted(range(
         len(users)))), 'Positions should be %s. Got %s' % (sorted(
@@ -132,6 +136,7 @@ class Sequence(object):
         'users': users,
         'recommendations': recommendations,
         'rewards': rewards,
+        'ratings': ratings,
         'safety_costs': np.expand_dims(costs, -1),
         'final_mask': np.expand_dims(masks, 1)
     }
@@ -143,6 +148,7 @@ class ReplayBuffer(object):
   KEYS = [
       'recommendations',
       'rewards',
+      'ratings',
       'safety_costs',
       'users',
       'final_mask',
@@ -150,7 +156,7 @@ class ReplayBuffer(object):
 
   # Parent code may have slightly different names for fields.
   # Aliases help translate one to the other.
-  ALIASES = {'reward_seqs': 'rewards'}
+  ALIASES = {'reward_seqs': 'rewards', 'rating_seqs': 'ratings'}
 
   def __init__(self):
     self._buffer = {key: [] for key in self.KEYS}
@@ -192,7 +198,7 @@ class MovieLensRNNAgent(rnn_cvar_agent.SafeRNNAgent):
                dropout=0.0, user_id_input=False,
                random_seed=None,
                stateful=False,
-               batch_size=None, update_method="alternate", lambda_cvar=None):
+               batch_size=None, update_method="alternate", lambda_cvar=0.0):
     self.user_embedding_size = user_embedding_size
     self.num_users = observation_space['user']['user_id'].n
     self.padding_user_id_token = self.num_users

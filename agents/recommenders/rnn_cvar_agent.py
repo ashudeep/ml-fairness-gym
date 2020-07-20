@@ -106,7 +106,8 @@ class SafeRNNAgent(rnn_agent.RNNAgent):
     self.replay_buffer = {
         'recommendation_seqs': [],
         'reward_seqs': [],
-        'safety_costs': []
+        'safety_costs': [],
+        'rating_seqs': []
     }
 
   def _get_safety_cost(self, observation):

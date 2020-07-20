@@ -17,9 +17,10 @@
 """Tests for safe_rl_recs.rnn_agent."""
 from absl import flags
 from absl.testing import absltest
+import sys
+sys.path.append('/home/as3354/ml-fairness-gym/')
 import agents.recommenders.rnn_agent as rnn_agent
 import agents.recommenders.rnn_cvar_agent as rnn_cvar_agent
-import agents.recommenders.rnn_cvar_agent_sgd as rnn_cvar_agent_sgd
 import environments.recommenders.restaurant_toy_recsim as restaurant_toy_recsim
 
 FLAGS = flags.FLAGS

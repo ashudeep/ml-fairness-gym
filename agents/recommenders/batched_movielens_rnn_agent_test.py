@@ -18,6 +18,8 @@
 
 import os
 import tempfile
+import sys
+sys.path.append('/home/as3354/ml-fairness-gym/')
 from absl import flags
 from absl.testing import absltest
 import file_util

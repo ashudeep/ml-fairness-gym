@@ -105,11 +105,13 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
             self.max_episode_length+1, dtype=np.int) * self.padding_token
         self.curr_recommendation_list[0] = self.start_token
         self.curr_reward_list = np.zeros(self.max_episode_length+1)
+        self.curr_rating_list = np.zeros(self.max_episode_length+1)
         self.curr_trajectory_length = 0
 
     def empty_buffer(self):
         """Clears the history stored by the agent."""
-        self.replay_buffer = {'recommendation_seqs': [], 'reward_seqs': []}
+        self.replay_buffer = {'recommendation_seqs': [],
+                              'reward_seqs': [], 'rating_seqs': []}
 
     def get_model_prediction(self):
         """Returns the Softmax layer for the last time step."""
@@ -117,7 +119,7 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
         softmax_all_layers = self.model.predict(
             # Offset by one to use (recs, rewards) for the input.
             [np.array([self.curr_recommendation_list[:-1]]),
-             np.array([self.curr_reward_list[:-1]])])
+             np.array([self.curr_rating_list[:-1]])])
         return softmax_all_layers[:, curr_len - 1]
 
     def end_episode(self, reward, observation, eval_mode=False):
@@ -127,6 +129,7 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
         self.replay_buffer['recommendation_seqs'].append(
             self.curr_recommendation_list)
         self.replay_buffer['reward_seqs'].append(self.curr_reward_list)
+        self.replay_buffer['rating_seqs'].append(self.curr_rating_list)
         if not eval_mode:
             self.model_update()
             self.empty_buffer()  # Empty the buffer after updating the model.
@@ -140,6 +143,7 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
              temperature=1.0):
         """Update the model using the reward, and recommends the next slate."""
         self.curr_reward_list[self.curr_trajectory_length] = reward
+        self.curr_rating_list[self.curr_trajectory_length] = 0 if reward==0 else observation['response'][0]['rating']
         self.curr_trajectory_length += 1
 
         # make next recommendation
@@ -152,7 +156,7 @@ class RNNAgent(recsim.agent.AbstractEpisodicRecommenderAgent):
         if np.all(np.isnan(softmax_probs)):
             raise ValueError(
                 'The entire output of the softmax is NaNs. The model will not train further.')
-            
+
         if deterministic:
             rec = np.argmax(softmax_probs)
         else:
