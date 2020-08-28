@@ -77,6 +77,7 @@ class EnvConfig(core.Params):
   lambda_non_violent = attr.ib(default=0)
   user_config = attr.ib(factory=UserConfig)
   seeds = attr.ib(factory=Seeds)
+  user_sampler_ctor = attr.ib(default=recsim_samplers.UserPoolSampler)
 
 
 class Movie(document.AbstractDocument):
@@ -361,9 +362,13 @@ def multiobjective_reward(responses, lambda_non_violent=0.0):
   """
   if not responses:
     raise ValueError('Empty response list.')
+  # return np.mean([
+  #     lambda_non_violent * (1-response.violence_score) +
+  #     (1 - lambda_non_violent) * response.rating for response in responses
+  # ])
   return np.mean([
-      lambda_non_violent * (1-response.violence_score) +
-      (1 - lambda_non_violent) * response.rating for response in responses
+      - lambda_non_violent * (response.violence_score
+      ) + response.rating for response in responses
   ])
 
 
@@ -389,11 +394,15 @@ def create_gym_environment(env_config):
 
   document_sampler = recsim_samplers.SingletonSampler(dataset.get_movies(),
                                                       Movie)
-
-  user_sampler = recsim_samplers.UserPoolSampler(
+  if env_config.user_sampler_ctor == recsim_samplers.SequentialUserSampler:
+    user_sampler = env_config.user_sampler_ctor(
       seed=env_config.seeds.user_sampler, users=dataset.get_users(),
-      user_ctor=user_ctor, partitions=env_config.train_eval_test,
-      partition_seed=env_config.seeds.train_eval_test)
+      user_ctor=user_ctor)
+  else:
+      user_sampler = env_config.user_sampler_ctor(
+        seed=env_config.seeds.user_sampler, users=dataset.get_users(),
+        user_ctor=user_ctor, partitions=env_config.train_eval_test,
+        partition_seed=env_config.seeds.train_eval_test)
 
   user_model = UserModel(
       user_sampler=user_sampler,

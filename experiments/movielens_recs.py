@@ -48,13 +48,13 @@ flags.DEFINE_float('lambda_lr', 0.0, 'Learning Rate for Lambda.')
 flags.DEFINE_float('var_lr', 0.0, 'Learning Rate for VaR.')
 flags.DEFINE_float('lr', 0.0001, 'Learning Rate for the model parameters.')
 flags.DEFINE_float('gamma', 0.1, 'Gamma for reward accumulation.')
-flags.DEFINE_float('baseline', 0, 'Baseline value for variance reduction.')
+flags.DEFINE_float('baseline', 0.5, 'Baseline value for variance reduction.')
 flags.DEFINE_integer(
     'num_users_eval', 100, 'Number of users sampled to evaluate'
     'during the training.')
 flags.DEFINE_integer('num_users_eval_final', 1000,
                      'Number of users sampled to evaluate the final agent.')
-flags.DEFINE_integer('eval_every', 100,
+flags.DEFINE_integer('eval_every', 500,
                      'Evaluate the agent after these many steps.')
 flags.DEFINE_integer('num_ep_per_update', 128,
                      'Number of episodes to generate for each training step.')
@@ -73,7 +73,7 @@ flags.DEFINE_float('topic_affinity_update_threshold', 3.0,
 flags.DEFINE_float('affinity_update_delta', 0.0,
                    'Topic affinitiy update delta.')
 flags.DEFINE_integer(
-    'checkpoint_every', 1000, 'Number of iterations after'
+    'checkpoint_every', 5000, 'Number of iterations after'
     'which the model is checkpointed.')
 flags.DEFINE_float(
     'multiobjective_lambda', 0.0,
@@ -83,7 +83,9 @@ flags.DEFINE_boolean(
     'eval_deterministic', False,
     'Whether to evaluate the model using a deterministic '
     '(argmax) policy instead of sampling from Softmax')
-
+flags.DEFINE_boolean(
+    'debug_log', False,
+    'Whether to save the entire text training log in a file.')
 flags.DEFINE_integer('num_hidden_layers', 1,
                      'Number of hidden layers in the agent model.')
 flags.DEFINE_string('expt_name_suffix', None,
@@ -198,6 +200,9 @@ def _agent_builder(env, config, agent_ctor=None):
         copy.deepcopy(vars(config)), CONFIG_NAME_TO_AGENT_ARG)
 
     config_args.update({'load_from_checkpoint': config.warm_start.filename})
+
+    if config.initial_agent_model:
+        config_args.update({'load_from_checkpoint': config.initial_agent_model})
 
     # Filter out config values that are not agent constructor arguments.
     ctor_args = set(inspect.getfullargspec(agent_ctor).args)

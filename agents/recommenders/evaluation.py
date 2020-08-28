@@ -56,7 +56,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                    risk_score_extractor=violence_risk, plot_histogram=False,
                    plot_trajectories=True,
                    stepwise_plot=False, only_evaluate_pool=None,
-                   reward_health_distribution_plot=False):
+                   reward_health_distribution_plot=False, debug_log=False):
     """Runs an agent-env simulation to evaluate average reward and safety costs.
 
     Args:
@@ -85,14 +85,16 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
 
     for pool in pools:
         tf.keras.backend.set_learning_phase(0)
-        if hasattr(env._environment, 'set_active_pool'):  # pylint: disable=protected-access
+        if hasattr(env._environment._user_model._user_sampler, 'set_active_pool'):  # pylint: disable=protected-access
             env._environment.set_active_pool(
                 pool)  # pylint: disable=protected-access
         else:
-            assert pool == 'all'
+            assert pool == 'all' or only_evaluate_pool
         if plot_histogram or plot_trajectories:
             recs_histogram = Counter({})
             recs_histogram_keys_list = {}
+        if debug_log:
+            user_rec_log = []
         ratings = []
         ratings_health_user_map = {}
         health = []
@@ -103,6 +105,7 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
             stepwise_healths = [[] for _ in range(max_episode_length)]
 
         agent.epsilon = 0.0  # Turn off any exploration.
+        env._environment._user_model._user_sampler.reset_sampler()
         # Set the learning phase to 0 i.e. evaluation to not use dropout.
         # Generate num_users trajectories.
         for _ in range(num_users):
@@ -115,6 +118,9 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
             reward = 0
             observation = env.reset()
             curr_user_vector = env.environment.user_model._user_state.topic_affinity
+            user_id = observation['user']['user_id']
+            if debug_log:
+                user_rec_log.append((user_id, []))
             for step_number in range(max_episode_length):
                 slate = agent.step(reward, observation, eval_mode=True,
                                    deterministic=deterministic, temperature=softmax_temperature)
@@ -136,6 +142,8 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
                 curr_user_rating += rating
                 curr_user_reward += reward
                 curr_user_health += 1-risk_score_extractor(observation)
+                if debug_log:
+                    user_rec_log[-1][1].append((slate[0], rating, 1-risk_score_extractor(observation), reward))
             agent.end_episode(reward, observation, eval_mode=True)
             ratings.append(curr_user_rating/float(max_episode_length))
             health.append(curr_user_health/float(max_episode_length))
@@ -157,9 +165,6 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
             plt.show()
         if stepwise_plot:
             plot_stepwise_ratings(stepwise_ratings, stepwise_healths)
-        if reward_health_distribution_plot:
-            print(ratings_health_user_map)
-            plot_reward_vs_health_distribution(ratings, health)
         # Set the learning phase back to 1.
         tf.keras.backend.set_learning_phase(1)
         if scatter_plot_trajectories:
@@ -173,6 +178,12 @@ def evaluate_agent(agent, env, alpha, num_users=100, deterministic=False,
         }
         if plot_histogram:
             results[pool]['unique_recs'] = len(recs_histogram.keys())
+        if reward_health_distribution_plot:
+            results[pool]['ratings_health_user_map'] = ratings_health_user_map
+            plot_reward_vs_health_distribution(ratings, health)
+        if debug_log:
+            save_user_rec_log()
+            results[pool]['user_rec_log'] = user_rec_log
 
     if len(results) == 1:  # No train/eval/test split, just return one value.
         return results[only_evaluate_pool] if only_evaluate_pool else results['all']

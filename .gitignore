@@ -4,4 +4,6 @@
 **.sub
 **.json
 **.cpython
-experiments/graphite-scripts/*
+experiments/graphite-scripts/**
+**_pycache__**
+**job

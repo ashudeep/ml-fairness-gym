@@ -16,6 +16,7 @@
 # Lint as: python3
 """Samplers for Recsim simulations."""
 import numpy as np
+from absl import logging
 from recsim import document
 from recsim import user
 
@@ -140,3 +141,32 @@ class UserPoolSampler(user.AbstractUserSampler):
       raise ValueError('Trying to select pool %d but there are only %d pools.' %
                        (pool, len(self._partitions)))
     self._active_pool = pool
+
+class SequentialUserSampler(user.AbstractUserSampler):
+  """Iterates over a sequence of candidate documents."""
+
+  def __init__(self, users,
+               user_ctor,
+               seed=None):
+    super(SequentialUserSampler, self).__init__(seed=seed,
+                                          user_ctor=user_ctor)
+    self._users = {user.user_id: user for user in users}
+    self._num_users = len(self._users)
+    self._idx = 0
+
+  def size(self):
+    return len(self._users)
+
+  def sample_user(self):
+    if self._idx >= self._num_users:
+      self.reset_sampler()
+      raise ValueError('Attempting to sample more users than available. Sampler will now reset.')
+    user = self._users[self._idx]
+    self._idx += 1
+    return user
+
+  def get_user(self, user_id):
+    return self._users[user_id]
+
+  def reset_sampler(self):
+    self._idx = 0
