@@ -11,6 +11,6 @@
 #SBATCH --mem=12000M                                 # Memory required per node
 ##SBATCH --partition=mpi-cpus
 #SBATCH --requeue
-srun  tensorboard --logdir=/share/thorsten/as3354/saferecs/results_0828/runs
+srun  tensorboard --logdir=/share/thorsten/as3354/saferecs/results_0914/runs
 
 ## Lookup tensorboard.err (path above) and tunnel your ssh to that server and port through graphite. 
